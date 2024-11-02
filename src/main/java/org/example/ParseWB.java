@@ -15,7 +15,8 @@ public class ParseWB {
     void Parse(String url){
 
         WebDriver webDriver = new FirefoxDriver();
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter("cruises.txt",true))) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("items.txt",true))) {
+            Format format = new Format();
             webDriver.get(url);
             Thread.sleep(2000);
             List<WebElement> GoToInMenus = webDriver.findElements(By.cssSelector(".menu-category__link"));
@@ -42,16 +43,13 @@ public class ParseWB {
                     WebElement filterButton = webDriver.findElement(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
                     filterButton.click();
                     Thread.sleep(500);
-                    List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
-                    if(filterContainer.isEmpty()) break;
-                    WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
-                    ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
-                    Thread.sleep(500);
+                    WebElement filterContainer = webDriver.findElement(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+                    WebElement filterRubliButton = filterContainer.findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
                     filterRubliButton.click();
-                    Thread.sleep(1000);
+                    Thread.sleep(500);
                     WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
                     filterSubmitButton.click();
-                    Thread.sleep(1500);
+                    Thread.sleep(500);
                     //######################################################FILTERS###################################################
 
 
@@ -64,8 +62,30 @@ public class ParseWB {
                         Thread.sleep(500);
                         ((JavascriptExecutor) webDriver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
                         Thread.sleep(500);
-                        nextPage = webDriver.findElements(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
+                        String itemName;
+                        String itemCost;
+                        String feedbackCost;
+                        String itemArticle;
 
+                        //######################################################DOWNLOAD-INFO###################################################
+                        List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+                        for(WebElement item : items){
+                            itemArticle = item.getAttribute("data-nm-id");
+                            WebElement name = item.findElement(By.cssSelector(".product-card__name"));
+                            itemName = name.getText();
+                            WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
+                            itemCost = price.getText();
+                            WebElement feedbackPrice = item.findElement(By.cssSelector(".feedbacks-points-sum"));
+                            feedbackCost = feedbackPrice.getText();
+                            format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
+                        }
+                        //######################################################DOWNLOAD-INFO###################################################
+
+
+
+
+
+                        nextPage = webDriver.findElements(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
                         if(nextPage.isEmpty()){
                             break;
                         }
