@@ -20,11 +20,17 @@ public class ParseWB {
             webDriver.get(url);
             Thread.sleep(2000);
             List<WebElement> GoToInMenus = webDriver.findElements(By.cssSelector(".menu-category__link"));
+
+
+
             for(WebElement Menu : GoToInMenus){
+
                 try {
                     //######################################################UNDERCATEGORIES###################################################
                     String hrefMenu = Menu.getAttribute("href");
+                    int count = 0;
                     System.out.println(hrefMenu);
+
                     ((JavascriptExecutor) webDriver).executeScript("window.open('" + hrefMenu + "', '_blank');");
                     String originalTab = webDriver.getWindowHandle();
                     Set<String> allTabs = webDriver.getWindowHandles();
@@ -35,6 +41,10 @@ public class ParseWB {
                         }
                     }
                     Thread.sleep(2000);
+                    List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
+                    if(feedback.size()<2) {
+
+                    }
                     //######################################################UNDERCATEGORIES###################################################
 
 
@@ -43,8 +53,11 @@ public class ParseWB {
                     WebElement filterButton = webDriver.findElement(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
                     filterButton.click();
                     Thread.sleep(500);
-                    WebElement filterContainer = webDriver.findElement(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
-                    WebElement filterRubliButton = filterContainer.findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
+                    List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+                    if(filterContainer.isEmpty()) break;
+                    WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
+                    ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
+                    Thread.sleep(500);
                     filterRubliButton.click();
                     Thread.sleep(500);
                     WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
@@ -57,11 +70,15 @@ public class ParseWB {
                     //######################################################CHANGE-PAGES###################################################
                     List<WebElement> nextPage;
                     do{
-                        List<WebElement> Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
-                        ((JavascriptExecutor) webDriver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
-                        Thread.sleep(500);
-                        ((JavascriptExecutor) webDriver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
-                        Thread.sleep(500);
+                        webDriver.manage().deleteAllCookies();
+                        for(int i=0;i<5;i++){
+                            List<WebElement> Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+                            WebElement lastElement = Elemts.get(Elemts.size() - 1);  // Получаем последний элемент из списка
+                            // Скроллим до последнего элемента
+                            ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", lastElement);
+                            Thread.sleep(500);
+                        }
+
                         String itemName;
                         String itemCost;
                         String feedbackCost;
@@ -70,16 +87,26 @@ public class ParseWB {
                         //######################################################DOWNLOAD-INFO###################################################
                         List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
                         for(WebElement item : items){
+
+//                            if(item.findElement(By.className("feedbacks-points-sum"))!=null){
+//                                WebElement feedbackPrice = item.findElement(By.className("feedbacks-points-sum"));
+//                                feedbackCost = feedbackPrice.getText();
+//                            }else{
+//                                continue;
+//                            }
+                            List<WebElement> feedbackPrice = item.findElements(By.className("feedbacks-points-sum"));
+                            if(feedbackPrice.isEmpty()) continue;
+                            feedbackCost = feedbackPrice.get(0).getText();
                             itemArticle = item.getAttribute("data-nm-id");
                             WebElement name = item.findElement(By.cssSelector(".product-card__name"));
                             itemName = name.getText();
                             WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
                             itemCost = price.getText();
-                            WebElement feedbackPrice = item.findElement(By.className("feedbacks-points-sum"));
-                            feedbackCost = feedbackPrice.getText();
-                            System.out.println(String.format("%s\t%s\t%s\t%s\n", itemName, itemCost, feedbackCost, itemArticle));
+//                            System.out.println(String.format("%s\t%s\t%s\t%s\n", itemName, itemCost, feedbackCost, itemArticle));
                             format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
+                            count++;
                         }
+                        Thread.sleep(1000);
                         //######################################################DOWNLOAD-INFO###################################################
 
 
@@ -95,9 +122,7 @@ public class ParseWB {
                         Thread.sleep(2000);
                     }while (!nextPage.isEmpty());
                     //######################################################CHANGE-PAGES###################################################
-
-
-
+                    System.out.println(count);
                     webDriver.close();
                     webDriver.switchTo().window(originalTab);
                 } catch (NoSuchElementException e) {
@@ -109,7 +134,7 @@ public class ParseWB {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {
-            webDriver.quit();
+//            webDriver.quit();
         }
     }
 }
