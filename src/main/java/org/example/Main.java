@@ -4,6 +4,6 @@ public class Main {
     public static void main(String[] args) {
         ParseWB parseWB = new ParseWB();
 
-        parseWB.Parse("https://www.wildberries.ru/");
+        parseWB.Parse("https://www.wildberries.ru/catalog/knigi");
     }
 }
