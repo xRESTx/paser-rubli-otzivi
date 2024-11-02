@@ -42,30 +42,37 @@ public class ParseWB {
                     WebElement filterButton = webDriver.findElement(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
                     filterButton.click();
                     Thread.sleep(500);
-                    WebElement filterContainer = webDriver.findElement(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
-                    WebElement filterRubliButton = filterContainer.findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
-                    filterRubliButton.click();
+                    List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+                    if(filterContainer.isEmpty()) break;
+                    WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
+                    ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
                     Thread.sleep(500);
+                    filterRubliButton.click();
+                    Thread.sleep(1000);
                     WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
                     filterSubmitButton.click();
-                    Thread.sleep(500);
+                    Thread.sleep(1500);
                     //######################################################FILTERS###################################################
 
 
 
                     //######################################################CHANGE-PAGES###################################################
-                    WebElement nextPage;
+                    List<WebElement> nextPage;
                     do{
                         List<WebElement> Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
                         ((JavascriptExecutor) webDriver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
                         Thread.sleep(500);
                         ((JavascriptExecutor) webDriver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
                         Thread.sleep(500);
-                        nextPage = webDriver.findElement(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
-                        String nextHref = nextPage.getAttribute("href");
+                        nextPage = webDriver.findElements(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
+
+                        if(nextPage.isEmpty()){
+                            break;
+                        }
+                        String nextHref = nextPage.get(0).getAttribute("href");
                         webDriver.navigate().to(nextHref);
                         Thread.sleep(2000);
-                    }while (nextPage != null);
+                    }while (!nextPage.isEmpty());
                     //######################################################CHANGE-PAGES###################################################
 
 
