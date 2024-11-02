@@ -75,8 +75,9 @@ public class ParseWB {
                             itemName = name.getText();
                             WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
                             itemCost = price.getText();
-                            WebElement feedbackPrice = item.findElement(By.cssSelector(".feedbacks-points-sum"));
+                            WebElement feedbackPrice = item.findElement(By.className("feedbacks-points-sum"));
                             feedbackCost = feedbackPrice.getText();
+                            System.out.println(String.format("%s\t%s\t%s\t%s\n", itemName, itemCost, feedbackCost, itemArticle));
                             format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
                         }
                         //######################################################DOWNLOAD-INFO###################################################
