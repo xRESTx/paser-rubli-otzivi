@@ -21,6 +21,7 @@ public class ParseWB {
             List<WebElement> GoToInMenus = webDriver.findElements(By.cssSelector(".menu-category__link"));
             for(WebElement Menu : GoToInMenus){
                 try {
+                    //######################################################UNDERCATEGORIES###################################################
                     String hrefMenu = Menu.getAttribute("href");
                     System.out.println(hrefMenu);
                     ((JavascriptExecutor) webDriver).executeScript("window.open('" + hrefMenu + "', '_blank');");
@@ -33,6 +34,26 @@ public class ParseWB {
                         }
                     }
                     Thread.sleep(2000);
+                    //######################################################UNDERCATEGORIES###################################################
+
+
+
+                    //######################################################FILTERS###################################################
+                    WebElement filterButton = webDriver.findElement(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
+                    filterButton.click();
+                    Thread.sleep(500);
+                    WebElement filterContainer = webDriver.findElement(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+                    WebElement filterRubliButton = filterContainer.findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
+                    filterRubliButton.click();
+                    Thread.sleep(500);
+                    WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
+                    filterSubmitButton.click();
+                    Thread.sleep(500);
+                    //######################################################FILTERS###################################################
+
+
+
+                    //######################################################CHANGE-PAGES###################################################
                     WebElement nextPage;
                     do{
                         List<WebElement> Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
@@ -45,6 +66,7 @@ public class ParseWB {
                         webDriver.navigate().to(nextHref);
                         Thread.sleep(2000);
                     }while (nextPage != null);
+                    //######################################################CHANGE-PAGES###################################################
 
 
 
