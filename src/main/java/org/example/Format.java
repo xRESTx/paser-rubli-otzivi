@@ -12,7 +12,8 @@ public class Format {
         int cost = Integer.parseInt(itemCost);
         int feedbackCost = Integer.parseInt(itemfFeedBackCost);
         Double percent = (double) feedbackCost/cost;
-        writer.write(String.format("%s\t%s\t%s\t%s\t%s\n", itemName, cost, feedbackCost, percent, article));
+        String purchaseLink = "https://www.wildberries.ru/catalog/"+article+"/detail.aspx";
+        writer.write(String.format("%s\t%s\t%s\t%s\t%s\t%s\n", itemName, cost, feedbackCost, percent, article, purchaseLink));
 
 
 
