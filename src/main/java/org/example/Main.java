@@ -13,27 +13,26 @@ public class Main {
     public static void main(String[] args) throws InterruptedException, IOException {
         ParseWB parseWB = new ParseWB();
                 List<String[]> tasks = Arrays.asList(
-                        new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/obuv", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/detyam", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/krasota", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/aksessuary", "Potok2.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/elektronika", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/igrushki", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/dom/mebel", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/pitanie", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/sport", "Potok1.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya", "Potok3.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty", "Potok3.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon", "Potok3.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/kulturnyy-kod", "Potok3.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/knigi", "Potok3.txt"},
-                        new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary", "Potok3.txt"}
+                        new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary", "Kantstovary.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/obuv", "obuv.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/detyam", "detyam.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha", "dom-i-dacha.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/krasota", "krasota.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/aksessuary", "aksessuary.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/elektronika", "elektronika.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/igrushki", "igrushki.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/dom/mebel", "mebel.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/pitanie", "pitanie.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika", "bytovaya-tehnika.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/sport", "sport.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya", "yuvelirnye-ukrasheniya.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty", "instrumenty.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon", "dachniy-sezon.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/kulturnyy-kod", "kulturnyy-kod.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/knigi", "knigi.txt"},
+                        new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary", "avtotovary.txt"}
                 );
 
-                // Запускаем потоки
                 for (int i = 0; i < tasks.size(); i += 3) {
                     int index1 = i;
                     int index2 = i + 1;
