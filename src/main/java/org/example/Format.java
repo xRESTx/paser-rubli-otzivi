@@ -13,5 +13,8 @@ public class Format {
         int feedbackCost = Integer.parseInt(itemfFeedBackCost);
         Double percent = (double) feedbackCost/cost;
         writer.write(String.format("%s\t%s\t%s\t%s\t%s\n", itemName, cost, feedbackCost, percent, article));
+
+
+
     }
 }
