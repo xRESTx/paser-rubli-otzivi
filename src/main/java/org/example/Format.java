@@ -5,32 +5,32 @@ import java.io.IOException;
 
 public class Format {
     void FormatToTXT(String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer) throws IOException {
-        itemCost = itemCost.replaceAll("[^0-9]", "");  // Удаляем все символы, кроме цифр
-        itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");  // Удаляем все символы, кроме цифр
+        itemCost = itemCost.replaceAll("[^0-9]", "");
+        itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");
 
         int cost = 0;
         int feedbackCost = 0;
 
         if (itemCost == null || itemCost.isEmpty()) {
-            System.out.println("Строка пуста или не инициализирована");
+            System.out.println("Str is empty, My Lord");
             return;
         } else {
             try {
                 cost = Integer.parseInt(itemCost);
             } catch (NumberFormatException e) {
-                System.out.println("Ошибка: некорректный формат строки");
+                System.out.println("Mistake: Uncorrect format str, My Lord");
                 return;
             }
         }
 
         if (itemfFeedBackCost == null || itemfFeedBackCost.isEmpty()) {
-            System.out.println("Строка пуста или не инициализирована");
+            System.out.println("Str is empty, My Lord");
             return;
         } else {
             try {
                 feedbackCost = Integer.parseInt(itemfFeedBackCost);
             } catch (NumberFormatException e) {
-                System.out.println("Ошибка: некорректный формат строки");
+                System.out.println("Mistake: Uncorrect format str, My Lord");
                 return;
             }
         }

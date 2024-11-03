@@ -39,7 +39,7 @@ public class ParseWB {
                 String hrefSubMenu = subMenu.getAttribute("href");
                 int ch = Bypass(webDriver,  writer, hrefSubMenu,true);
                 if(ch == 404){
-                    System.out.println("Всё хуйня");
+                    System.out.println("All huinya, My Lord");
                     continue;
                 }
             }
@@ -55,7 +55,7 @@ public class ParseWB {
         if(filterButton.isEmpty()) {
             webDriver.navigate().refresh();
             Thread.sleep(1500);
-            System.out.println("Странная хуйня");
+            System.out.println("Strange huinya, My Lord");
             filterButton = webDriver.findElements(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
         }
         filterButton.get(0).click();
@@ -76,7 +76,7 @@ public class ParseWB {
         Thread.sleep(200);
         List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
         if(feedback.isEmpty()) {
-            System.out.println("Обновились");
+            System.out.println("Reload page, My Lord ");
             webDriver.navigate().refresh();
             Thread.sleep(1500);
         }
@@ -92,12 +92,13 @@ public class ParseWB {
                 int schetchik = 0;
                 while (Elemts.isEmpty()){
                     if(schetchik>20) {
+                        System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
                         webDriver.close();
                         webDriver.switchTo().window(originalTab);
                         return 0;
                     }
                     schetchik++;
-                    System.out.println("Обновились СУКА БЕСиТЕ");
+                    System.out.println("zaebalo obnovlyat'sya, My Lord");
                     webDriver.navigate().refresh();
                     Thread.sleep(1500);
                     Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
@@ -162,7 +163,7 @@ public class ParseWB {
                         continue;
                     }
                 } catch (NoSuchElementException e) {
-                System.err.println("Пропускаем...");
+                System.err.println("Skip, My Lord");
             }
             }
 
@@ -171,7 +172,7 @@ public class ParseWB {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("Всё сделали");
+        System.out.println("All completed, My Lord");
         webDriver.quit();
     }
 }

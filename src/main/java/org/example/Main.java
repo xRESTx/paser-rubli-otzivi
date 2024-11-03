@@ -89,7 +89,7 @@ public class Main {
                     }
                 }
 
-                System.out.println("Все задачи завершены.");
+                System.out.println("All tasks completed, My Lord");
 
 //        WebDriver webDriver = new FirefoxDriver();
 //        BufferedWriter writer = new BufferedWriter(new FileWriter("items.txt",true));
