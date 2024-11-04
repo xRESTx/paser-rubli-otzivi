@@ -13,7 +13,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 
 public class ParseWB {
-    int Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, boolean subbol) throws InterruptedException, IOException {
+    int Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, boolean subbol1, boolean subbol2) throws InterruptedException, IOException {
         webDriver.manage().deleteAllCookies();
         Format format = new Format();
         int count = 0;
@@ -21,9 +21,19 @@ public class ParseWB {
         ((JavascriptExecutor) webDriver).executeScript("window.open('" + hrefMenu + "', '_blank');");
         String originalTab = webDriver.getWindowHandle();
         Set<String> allTabs = webDriver.getWindowHandles();
+        boolean subsubbol = subbol1;
+        int skip = 0;
         for (String tab : allTabs) {
-            if(subbol) {
-                subbol = false;
+            if(skip==2) {
+                subbol1 = false;
+                subbol2 = false;
+            }
+            if(subbol1 && subbol2){
+                skip++;
+                continue;
+            }
+            if(subbol1 && !subbol2) {
+                subbol1 = false;
                 continue;
             }
             if (!tab.equals(originalTab)) {
@@ -34,13 +44,21 @@ public class ParseWB {
         Thread.sleep(1500);
         List<WebElement> subcategiry = webDriver.findElements(By.cssSelector("a.menu-category__subcategory-link"));
         if(!subcategiry.isEmpty()){
-            System.out.println(subcategiry.size());
             for(WebElement subMenu : subcategiry){
-                String hrefSubMenu = subMenu.getAttribute("href");
-                int ch = Bypass(webDriver,  writer, hrefSubMenu,true);
-                if(ch == 404){
-                    System.out.println("All huinya, My Lord");
-                    continue;
+                if(subsubbol){
+                    String hrefSubMenu = subMenu.getAttribute("href");
+                    int ch = Bypass(webDriver,  writer, hrefSubMenu,true,true);
+                    if(ch == 404){
+                        System.out.println("All huinya, My Lord");
+                        continue;
+                    }
+                }else {
+                    String hrefSubMenu = subMenu.getAttribute("href");
+                    int ch = Bypass(webDriver,  writer, hrefSubMenu,true,false);
+                    if(ch == 404){
+                        System.out.println("All huinya, My Lord");
+                        continue;
+                    }
                 }
             }
             webDriver.close();
@@ -52,7 +70,7 @@ public class ParseWB {
         Thread.sleep(500);
         //######################################################FILTERS###################################################
         List<WebElement> filterButton = webDriver.findElements(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all"));
-        if(filterButton.isEmpty()) {
+        while (filterButton.isEmpty()) {
             webDriver.navigate().refresh();
             Thread.sleep(1500);
             System.out.println("Strange huinya, My Lord");
@@ -71,14 +89,28 @@ public class ParseWB {
         Thread.sleep(300);
         filterRubliButton.click();
         Thread.sleep(300);
-        WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
-        filterSubmitButton.click();
+        List<WebElement> filterSubmitButton = webDriver.findElements(By.cssSelector(".filters-desktop__btn-main.btn-main"));
+        while(filterSubmitButton.isEmpty()){
+             filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+            if(filterContainer.isEmpty()) {
+                webDriver.close();
+                webDriver.switchTo().window(originalTab);
+                return 404;
+            }
+            filterRubliButton = filterContainer.get(0).findElement(By.tagName("button")); // Предполагается, что кнопка — это элемент <button>
+            ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
+            Thread.sleep(300);
+            filterRubliButton.click();
+            Thread.sleep(300);
+        }
+        filterSubmitButton.get(0).click();
         Thread.sleep(200);
         List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
-        if(feedback.isEmpty()) {
-            System.out.println("Reload page, My Lord ");
+        while (feedback.isEmpty()) {
             webDriver.navigate().refresh();
             Thread.sleep(1500);
+            System.out.println("Strange huinya, My Lord");
+            feedback = webDriver.findElements(By.cssSelector(".feedbacks-points-sum"));
         }
         //######################################################FILTERS###################################################
 
@@ -91,7 +123,7 @@ public class ParseWB {
                 List<WebElement> Elemts = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
                 int schetchik = 0;
                 while (Elemts.isEmpty()){
-                    if(schetchik>20) {
+                    if(schetchik>10) {
                         System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
                         webDriver.close();
                         webDriver.switchTo().window(originalTab);
@@ -158,7 +190,7 @@ public class ParseWB {
                     //######################################################UNDERCATEGORIES###################################################
                     String hrefMenu;
                     hrefMenu = Menu.getAttribute("href");
-                    int ch = Bypass(webDriver,  writer, hrefMenu,false);
+                    int ch = Bypass(webDriver,  writer, hrefMenu,false,false);
                     if(ch == 404){
                         continue;
                     }
@@ -166,13 +198,13 @@ public class ParseWB {
                 System.err.println("Skip, My Lord");
             }
             }
-
         } catch (IOException e) {
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
+        }finally {
+            System.out.println("All completed, My Lord");
+            webDriver.quit();
         }
-        System.out.println("All completed, My Lord");
-        webDriver.quit();
     }
 }
