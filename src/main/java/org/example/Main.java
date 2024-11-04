@@ -15,24 +15,28 @@ public class Main {
     public static void main(String[] args) throws InterruptedException, IOException {
         ParseWB parseWB = new ParseWB();
         List<String[]> tasks = Arrays.asList(
-                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary", "Kantstovary.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/zhenshchinam", "Kantstovary.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/obuv", "obuv.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/detyam", "detyam.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/muzhchinam", "muzhchinam.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha", "dom-i-dacha.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/krasota", "krasota.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/aksessuary", "aksessuary.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary", "avtotovary.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/elektronika", "elektronika.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/igrushki", "igrushki.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/dom/mebel", "mebel.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/aksessuary/tovary-dlya-vzroslyh", "tovary-dlya-vzroslyh.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/pitanie", "pitanie.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika", "bytovaya-tehnika.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/tovary-dlya-zhivotnyh", "tovary-dlya-zhivotnyh.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/sport", "sport.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/knigi", "knigi.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya", "yuvelirnye-ukrasheniya.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty", "instrumenty.txt"},
                 new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon", "dachniy-sezon.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/kulturnyy-kod", "kulturnyy-kod.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/knigi", "knigi.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary", "avtotovary.txt"}
+                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/zdorove", "zdorove.txt"},
+                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary", "kantstovary.txt"}
         );
         // Создаем пул из 3 потоков
         ExecutorService executorService = Executors.newFixedThreadPool(3);
