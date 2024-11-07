@@ -81,15 +81,7 @@ public class ParseWB {
         filterSubmitButton.click();
         Thread.sleep(200);
         List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
-        int schetchik = 0;
         while (feedback.isEmpty()){
-            if(schetchik>10) {
-                System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
-                webDriver.close();
-                webDriver.switchTo().window(originalTab);
-                return 0;
-            }
-            schetchik++;
             System.out.println("zaebalo obnovlyat'sya, My Lord");
             webDriver.navigate().refresh();
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
@@ -103,6 +95,21 @@ public class ParseWB {
         List<WebElement> nextPage;
         do{
             List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+            int schetchik = 0;
+            while (items.isEmpty()){
+                if(schetchik>10) {
+                    System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
+                    webDriver.close();
+                    webDriver.switchTo().window(originalTab);
+                    return 0;
+                }
+                schetchik++;
+                System.out.println("zaebalo obnovlyat'sya, My Lord");
+                webDriver.navigate().refresh();
+                wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+                items = webDriver.findElements(By.className("feedbacks-points-sum"));
+            }
+
             WebElement lastItem = items.get(items.size() - 1);
             while (true) {
                 ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", lastItem);
@@ -127,9 +134,13 @@ public class ParseWB {
             items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
             for(WebElement item : items){
                 List<WebElement> feedbackPrice = item.findElements(By.className("feedbacks-points-sum"));
-                if(feedbackPrice.isEmpty()) continue;
-                feedbackCost = feedbackPrice.get(0).getText();
                 itemArticle = item.getAttribute("data-nm-id");
+                if(feedbackPrice.isEmpty()){
+                    BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt",true));
+                    errorFile.write(String.format("%s\t", itemArticle));
+                    continue;
+                }
+                feedbackCost = feedbackPrice.get(0).getText();
                 WebElement name = item.findElement(By.cssSelector(".product-card__name"));
                 itemName = name.getText();
                 WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
@@ -144,7 +155,7 @@ public class ParseWB {
             if(nextPage.isEmpty()){
                 break;
             }
-            String nextHref = nextPage.get(0).getAttribute("href");
+            String nextHref = nextPage.getFirst().getAttribute("href");
             webDriver.navigate().to(nextHref);
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
         }while (!nextPage.isEmpty());
