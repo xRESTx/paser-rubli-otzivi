@@ -14,8 +14,8 @@ public class Format {
 
         if (itemCost == null || itemCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
-            BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt",true));
-            errorFile.write(String.format("%s\t", article));
+            BufferedWriter errorFile = new BufferedWriter(new FileWriter("results/error.txt",true));
+            errorFile.write(String.format("%s\n", article));
             return;
         } else {
             try {
@@ -28,8 +28,8 @@ public class Format {
 
         if (itemfFeedBackCost == null || itemfFeedBackCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
-            BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt",true));
-            errorFile.write(String.format("%s\t", article));
+            BufferedWriter errorFile = new BufferedWriter(new FileWriter("results/error.txt",true));
+            errorFile.write(String.format("%s\n", article));
             return;
         } else {
             try {

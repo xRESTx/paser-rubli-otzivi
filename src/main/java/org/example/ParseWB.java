@@ -84,6 +84,7 @@ public class ParseWB {
         while (feedback.isEmpty()){
             System.out.println("zaebalo obnovlyat'sya, My Lord");
             webDriver.navigate().refresh();
+            Thread.sleep(500);
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
             feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
         }
@@ -136,8 +137,8 @@ public class ParseWB {
                 List<WebElement> feedbackPrice = item.findElements(By.className("feedbacks-points-sum"));
                 itemArticle = item.getAttribute("data-nm-id");
                 if(feedbackPrice.isEmpty()){
-                    BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt",true));
-                    errorFile.write(String.format("%s\t", itemArticle));
+                    BufferedWriter errorFile = new BufferedWriter(new FileWriter("results/error.txt",true));
+                    errorFile.write(String.format("%s\n", itemArticle));
                     continue;
                 }
                 feedbackCost = feedbackPrice.get(0).getText();
