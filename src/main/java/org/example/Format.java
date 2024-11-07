@@ -1,6 +1,7 @@
 package org.example;
 
 import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 
 public class Format {
@@ -13,6 +14,8 @@ public class Format {
 
         if (itemCost == null || itemCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
+            BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt"));
+            errorFile.write(String.format("%s\t%s\t", article));
             return;
         } else {
             try {
@@ -25,6 +28,8 @@ public class Format {
 
         if (itemfFeedBackCost == null || itemfFeedBackCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
+            BufferedWriter errorFile = new BufferedWriter(new FileWriter("error.txt"));
+            errorFile.write(String.format("%s\t%s\t", article));
             return;
         } else {
             try {
