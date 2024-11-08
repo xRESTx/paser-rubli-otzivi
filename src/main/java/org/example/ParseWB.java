@@ -17,10 +17,9 @@ import java.util.List;
 import java.util.Set;
 
 public class ParseWB {
-
     int Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool) throws InterruptedException, IOException {
         webDriver.manage().deleteAllCookies();
-        WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(4));
+        WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
         Format format = new Format();
         int count = 0;
 
@@ -57,113 +56,124 @@ public class ParseWB {
                 webDriver.switchTo().window(originalTab);
                 return 404;
             }
-        }catch (TimeoutException ignored){}
+        }catch (TimeoutException ignore){
+            //######################################################UNDERCATEGORIES###################################################
 
+            //######################################################FILTERS###################################################
 
-        //######################################################UNDERCATEGORIES###################################################
-
-        //######################################################FILTERS###################################################
-
-        WebElement filterButton = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
-        filterButton.click();
-        Thread.sleep(500);
-        List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
-        if(filterContainer.isEmpty()) {
-            webDriver.close();
-            webDriver.switchTo().window(originalTab);
-            return 404;
-        }
-        WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button"));
-        ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
-        Thread.sleep(300);
-        filterRubliButton.click();
-        WebElement filterSubmitButton = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".filters-desktop__btn-main.btn-main")));
-        filterSubmitButton.click();
-        Thread.sleep(200);
-        List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
-        while (feedback.isEmpty()){
-            System.out.println("zaebalo obnovlyat'sya, My Lord");
-            webDriver.navigate().refresh();
+            WebElement filterButton = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+            ((JavascriptExecutor) webDriver).executeScript("arguments[0].click();", filterButton);
             Thread.sleep(500);
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
-            feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
-        }
-        //######################################################FILTERS###################################################
+            List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
+            if(filterContainer.isEmpty()) {
+                webDriver.close();
+                webDriver.switchTo().window(originalTab);
+                return 404;
+            }
+            WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button"));
+            ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
+            Thread.sleep(300);
+            ((JavascriptExecutor) webDriver).executeScript("arguments[0].click();", filterRubliButton);
+            Thread.sleep(300);
+            WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
+            filterSubmitButton.click();
 
-
-
-        //######################################################CHANGE-PAGES###################################################
-        List<WebElement> nextPage;
-        do{
-            List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+            Thread.sleep(1000);
+            List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
             int schetchik = 0;
-            while (items.isEmpty()){
-                if(schetchik>10) {
-                    System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
+            while (feedback.isEmpty()){
+                System.out.println("zaebalo obnovlyat'sya, My Lord");
+                webDriver.navigate().refresh();
+                Thread.sleep(500);
+                wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+                feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
+                schetchik++;
+                if(schetchik > 10){
+                    subBool.replaceAll(ignored -> true);
+                    subBool.add(true);
+                    Bypass(webDriver,writer,hrefMenu,subBool);
                     webDriver.close();
                     webDriver.switchTo().window(originalTab);
                     return 0;
                 }
-                schetchik++;
-                System.out.println("zaebalo obnovlyat'sya, My Lord");
-                webDriver.navigate().refresh();
-                wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
-                items = webDriver.findElements(By.className("feedbacks-points-sum"));
             }
+            //######################################################FILTERS###################################################
 
-            WebElement lastItem = items.get(items.size() - 1);
-            while (true) {
-                ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", lastItem);
-                Thread.sleep(200);
-                List<WebElement> newItems = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
-                if (items.size() == newItems.size()) {
-                    if (lastItem.isDisplayed()) {
-                        break;
+
+
+            //######################################################CHANGE-PAGES###################################################
+            List<WebElement> nextPage;
+            do{
+                List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+                schetchik = 0;
+                while (items.isEmpty()){
+                    if(schetchik>10) {
+                        System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
+                        webDriver.close();
+                        webDriver.switchTo().window(originalTab);
+                        return 0;
+                    }
+                    schetchik++;
+                    System.out.println("zaebalo obnovlyat'sya, My Lord");
+                    webDriver.navigate().refresh();
+                    wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+                    items = webDriver.findElements(By.className("feedbacks-points-sum"));
+                }
+
+                WebElement lastItem = items.get(items.size() - 1);
+                while (true) {
+                    ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", lastItem);
+                    Thread.sleep(200);
+                    List<WebElement> newItems = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+                    if (items.size() == newItems.size()) {
+                        if (lastItem.isDisplayed()) {
+                            break;
+                        }
+                    }
+                    else {
+                        items = newItems;
+                        lastItem = items.get(items.size() - 1);
                     }
                 }
-                else {
-                    items = newItems;
-                    lastItem = items.get(items.size() - 1);
-                }
-            }
-            String itemName;
-            String itemCost;
-            String feedbackCost;
-            String itemArticle;
+                String itemName;
+                String itemCost;
+                String feedbackCost;
+                String itemArticle;
 
-            //######################################################DOWNLOAD-INFO###################################################
-            items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
-            for(WebElement item : items){
-                List<WebElement> feedbackPrice = item.findElements(By.className("feedbacks-points-sum"));
-                itemArticle = item.getAttribute("data-nm-id");
-                if(feedbackPrice.isEmpty()){
-                    BufferedWriter errorFile = new BufferedWriter(new FileWriter("results/error.txt",true));
-                    errorFile.write(String.format("%s\n", itemArticle));
-                    continue;
-                }
-                feedbackCost = feedbackPrice.get(0).getText();
-                WebElement name = item.findElement(By.cssSelector(".product-card__name"));
-                itemName = name.getText();
-                WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
-                itemCost = price.getText();
+                //######################################################DOWNLOAD-INFO###################################################
+                items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
+                for(WebElement item : items){
+                    List<WebElement> feedbackPrice = item.findElements(By.className("feedbacks-points-sum"));
+                    itemArticle = item.getAttribute("data-nm-id");
+                    if(feedbackPrice.isEmpty()){
+                        BufferedWriter errorFile = new BufferedWriter(new FileWriter("error/error.txt",true));
+                        errorFile.write(String.format("%s\n", itemArticle));
+                        continue;
+                    }
+                    feedbackCost = feedbackPrice.get(0).getText();
+                    WebElement name = item.findElement(By.cssSelector(".product-card__name"));
+                    itemName = name.getText();
+                    WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
+                    itemCost = price.getText();
 //              System.out.println(String.format("%s\t%s\t%s\t%s\n", itemName, itemCost, feedbackCost, itemArticle));
-                format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
-                count++;
-            }
-            //######################################################DOWNLOAD-INFO###################################################
+                    format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
+                    count++;
+                }
+                //######################################################DOWNLOAD-INFO###################################################
 
-            nextPage = webDriver.findElements(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
-            if(nextPage.isEmpty()){
-                break;
-            }
-            String nextHref = nextPage.getFirst().getAttribute("href");
-            webDriver.navigate().to(nextHref);
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
-        }while (!nextPage.isEmpty());
-        //######################################################CHANGE-PAGES###################################################
-        System.out.println(count);
-        webDriver.close();
-        webDriver.switchTo().window(originalTab);
+                nextPage = webDriver.findElements(By.cssSelector(".pagination-next.pagination__next.j-next-page"));
+                if(nextPage.isEmpty()){
+                    break;
+                }
+                String nextHref = nextPage.getFirst().getAttribute("href");
+                webDriver.navigate().to(nextHref);
+                wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+            }while (!nextPage.isEmpty());
+            //######################################################CHANGE-PAGES###################################################
+            System.out.println(count);
+            webDriver.close();
+            webDriver.switchTo().window(originalTab);
+        }
         return 0;
     }
     void Parse(String url,String fileName){
@@ -177,16 +187,16 @@ public class ParseWB {
             for(WebElement Menu : GoToInMenus){
                 try {
                     //######################################################UNDERCATEGORIES###################################################
-                    String hrefMenu;
-                    hrefMenu = Menu.getAttribute("href");
+                    String hrefMenu = Menu.getAttribute("href");
                     List<Boolean> subBool = new ArrayList<>();
-                    int ch = Bypass(webDriver,  writer, hrefMenu,subBool);
-                    if(ch == 404){
+                    int ch = Bypass(webDriver, writer, hrefMenu, subBool);
+                    if (ch == 404) {
                         continue;
                     }
-                } catch (NoSuchElementException e) {
-                System.err.println("Skip, My Lord");
-            }
+                } catch (NoSuchElementException | InvalidSelectorException e) {
+                    System.err.println("Skip, My Lord");
+                    Parse(url,fileName);
+                }
             }
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);

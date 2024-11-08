@@ -11,6 +11,7 @@ public class Format {
 
         int cost = 0;
         int feedbackCost = 0;
+        itemName = itemName.replace("/","");
 
         if (itemCost == null || itemCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
