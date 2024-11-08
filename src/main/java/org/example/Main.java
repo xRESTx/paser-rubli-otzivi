@@ -57,7 +57,6 @@ public class Main {
 //        }
 
 
-
 //        Thread.sleep(5000);
         TxtReader txtReader = new TxtReader();
         txtReader.readTxtFile();
@@ -74,4 +73,3 @@ public class Main {
         System.out.println("All tasks completed, My Lord");
     }
 }
-
