@@ -27,7 +27,7 @@ public class Format {
             }
         }
 
-        if (itemfFeedBackCost == null || itemfFeedBackCost.isEmpty()) {
+        if (itemfFeedBackCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
             BufferedWriter errorFile = new BufferedWriter(new FileWriter("results/error.txt",true));
             errorFile.write(String.format("%s\n", article));
@@ -42,7 +42,6 @@ public class Format {
         }
 
         double percent = (double) feedbackCost / cost;
-//        if (percent < 0.6) return;
 
         String purchaseLink = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
         writer.write(String.format("%s\t%d\t%d\t%.2f\t%s\t%s\n", itemName, cost, feedbackCost, percent, article, purchaseLink));

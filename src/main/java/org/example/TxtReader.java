@@ -15,7 +15,7 @@ public class TxtReader {
 
             List<String> sentArticles = readSentArticles();
 
-            File directory = new File("results/results/");
+            File directory = new File("results/");
             if (!directory.exists()) {
                 System.out.println("Указанная директория не существует: ");
                 return;
@@ -55,7 +55,7 @@ public class TxtReader {
             tgBot.bot = new TelegramBot(botToken);
 
             for (String file : fileName) {
-                try (BufferedReader br = new BufferedReader(new FileReader("results/results/" + file))) {
+                try (BufferedReader br = new BufferedReader(new FileReader("results/" + file))) {
                     String line;
                     while ((line = br.readLine()) != null) {
                         String[] values = line.split("\t");
@@ -111,6 +111,8 @@ public class TxtReader {
                                     sentArticles.add(article);
                                 }
 
+                            } else {
+                                System.out.println("Этот товар уже был отправлен ранее");
                             }
                         } else {
                             System.out.println("Неверное количество параметров в строке: " + line);

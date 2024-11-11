@@ -18,12 +18,13 @@ import java.util.Set;
 
 public class ParseWB {
     int Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool) throws InterruptedException, IOException {
+
         webDriver.manage().deleteAllCookies();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
         Format format = new Format();
         int count = 0;
-
-        ((JavascriptExecutor) webDriver).executeScript("window.open('" + hrefMenu + "', '_blank');");
+        String hrefFeedPoint = hrefMenu + "?sort=popular&page=1&ffeedbackpoints=1";
+        ((JavascriptExecutor) webDriver).executeScript("window.open('" + hrefFeedPoint + "', '_blank');");
         String originalTab = webDriver.getWindowHandle();
         Set<String> allTabs = webDriver.getWindowHandles();
         int skip = 0;
@@ -58,27 +59,22 @@ public class ParseWB {
             }
         }catch (TimeoutException ignore){
             //######################################################UNDERCATEGORIES###################################################
-
-            //######################################################FILTERS###################################################
-
-            WebElement filterButton = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
-            ((JavascriptExecutor) webDriver).executeScript("arguments[0].click();", filterButton);
-            Thread.sleep(500);
-            List<WebElement> filterContainer = webDriver.findElements(By.cssSelector(".filters-desktop__switch.j-filter-container.filters-desktop__switch--ffeedbackpoints.show"));
-            if(filterContainer.isEmpty()) {
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".dropdown-filter__btn.dropdown-filter__btn--all")));
+            List<WebElement> checkList = webDriver.findElements(By.cssSelector(".product-card__wrapper"));
+            if(checkList.isEmpty()){
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
                 return 404;
             }
-            WebElement filterRubliButton = filterContainer.get(0).findElement(By.tagName("button"));
-            ((JavascriptExecutor) webDriver).executeScript("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", filterRubliButton);
-            Thread.sleep(300);
-            ((JavascriptExecutor) webDriver).executeScript("arguments[0].click();", filterRubliButton);
-            Thread.sleep(300);
-            WebElement filterSubmitButton = webDriver.findElement(By.cssSelector(".filters-desktop__btn-main.btn-main"));
-            filterSubmitButton.click();
+            //######################################################FILTERS###################################################
+            if (hrefMenu.equals("https://digital.wildberries.ru/catalog/audiobooks?sort=rating")
+                    || hrefMenu.equals("https://digital.wildberries.ru/catalog/services")) {
+                webDriver.close();
+                webDriver.switchTo().window(originalTab);
+                return 404;
+            }
 
-            Thread.sleep(1000);
+
             List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
             int schetchik = 0;
             while (feedback.isEmpty()){
@@ -155,7 +151,6 @@ public class ParseWB {
                     itemName = name.getText();
                     WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
                     itemCost = price.getText();
-//              System.out.println(String.format("%s\t%s\t%s\t%s\n", itemName, itemCost, feedbackCost, itemArticle));
                     format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
                     count++;
                 }
@@ -195,10 +190,13 @@ public class ParseWB {
                     }
                 } catch (NoSuchElementException | InvalidSelectorException e) {
                     System.err.println("Skip, My Lord");
+                    webDriver.quit();
                     Parse(url,fileName);
                 }
             }
-        } catch (IOException | InterruptedException e) {
+        }  catch (IOException | InterruptedException | TimeoutException e) {
+            webDriver.quit();
+            Parse(url, fileName);
             throw new RuntimeException(e);
         } finally {
             System.out.println("All completed, My Lord");
