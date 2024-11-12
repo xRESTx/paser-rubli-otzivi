@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 public class ParseWB {
-    int Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool) throws InterruptedException, IOException {
+    void Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool) throws InterruptedException, IOException {
 
         webDriver.manage().deleteAllCookies();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
@@ -47,15 +47,14 @@ public class ParseWB {
                 subBool.add(true);
                 for(WebElement subMenu : subcategiry){
                     String hrefSubMenu = subMenu.getAttribute("href");
-                    int ch = Bypass(webDriver,  writer, hrefSubMenu,subBool);
-                    if(ch == 404){
-                        System.out.println("All huinya, My Lord");
+                    if(hrefSubMenu.equals("https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/chehly")){
                         continue;
                     }
+                    Bypass(webDriver,  writer, hrefSubMenu,subBool);
                 }
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
-                return 404;
+                return;
             }
         }catch (TimeoutException ignore){
             //######################################################UNDERCATEGORIES###################################################
@@ -64,16 +63,16 @@ public class ParseWB {
             if(checkList.isEmpty()){
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
-                return 404;
+                return;
             }
             //######################################################FILTERS###################################################
             if (hrefMenu.equals("https://digital.wildberries.ru/catalog/audiobooks?sort=rating")
-                    || hrefMenu.equals("https://digital.wildberries.ru/catalog/services")) {
+                    || hrefMenu.equals("https://digital.wildberries.ru/catalog/services")
+                    || hrefMenu.equals("https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/chehly/chekxly-dlya-telefonov-xiaomi/prochie?sort=popular&page=1&ffeedbackpoints=1")) {
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
-                return 404;
+                return;
             }
-
 
             List<WebElement> feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
             int schetchik = 0;
@@ -85,12 +84,9 @@ public class ParseWB {
                 feedback = webDriver.findElements(By.className("feedbacks-points-sum"));
                 schetchik++;
                 if(schetchik > 10){
-                    subBool.replaceAll(ignored -> true);
-                    subBool.add(true);
-                    Bypass(webDriver,writer,hrefMenu,subBool);
                     webDriver.close();
                     webDriver.switchTo().window(originalTab);
-                    return 0;
+                    return;
                 }
             }
             //######################################################FILTERS###################################################
@@ -107,7 +103,7 @@ public class ParseWB {
                         System.out.println("We are zaebalis' obnovlyat'sya, My Lord");
                         webDriver.close();
                         webDriver.switchTo().window(originalTab);
-                        return 0;
+                        return;
                     }
                     schetchik++;
                     System.out.println("zaebalo obnovlyat'sya, My Lord");
@@ -169,7 +165,7 @@ public class ParseWB {
             webDriver.close();
             webDriver.switchTo().window(originalTab);
         }
-        return 0;
+        return;
     }
     void Parse(String url,String fileName){
 
@@ -183,11 +179,11 @@ public class ParseWB {
                 try {
                     //######################################################UNDERCATEGORIES###################################################
                     String hrefMenu = Menu.getAttribute("href");
-                    List<Boolean> subBool = new ArrayList<>();
-                    int ch = Bypass(webDriver, writer, hrefMenu, subBool);
-                    if (ch == 404) {
+                    if(hrefMenu.equals("https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya")){
                         continue;
                     }
+                    List<Boolean> subBool = new ArrayList<>();
+                    Bypass(webDriver, writer, hrefMenu, subBool);
                 } catch (NoSuchElementException | InvalidSelectorException e) {
                     System.err.println("Skip, My Lord");
                     webDriver.quit();
@@ -198,6 +194,7 @@ public class ParseWB {
             webDriver.quit();
             Parse(url, fileName);
             throw new RuntimeException(e);
+
         } finally {
             System.out.println("All completed, My Lord");
             webDriver.quit();

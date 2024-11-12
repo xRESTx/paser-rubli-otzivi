@@ -55,17 +55,16 @@ public class Main {
 //        executorService.shutdown();
 //        while (!executorService.isTerminated()) {
 //        }
-//        parseWB.Parse("https://www.wildberries.ru/catalog/kulturnyy-kod", "error/test.txt");
+//        parseWB.Parse("https://www.wildberries.ru/catalog/elektronika", "results/elektronika.txt");
 //        Thread.sleep(5000);
-        TxtReader txtReader = new TxtReader();
-        txtReader.readTxtFile();
+//        TxtReader txtReader = new TxtReader();
+//        txtReader.readTxtFile();
 //        //######################################################ONE-POISK-ZAPUSK###################################################
 //        WebDriver webDriver = new FirefoxDriver();
 //        BufferedWriter writer = new BufferedWriter(new FileWriter("test.txt",true));
-//        String hrefPoisk = "https://www.wildberries.ru/catalog/0/search.aspx?page=1&sort=popular&search=%D0%B7%D0%B6%D0%B8%D0%B3%D0%B0%D0%BB%D0%BA%D0%B0";
+//        String hrefPoisk = "https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony";
 ////        ParseWB parseWB = new ParseWB();
 //        List<Boolean> list = new ArrayList<>();
-//        list.add(false);
 //        parseWB.Bypass(webDriver, writer,hrefPoisk, list);
 //        //######################################################ONE-POISK-ZAPUSK###################################################
 
