@@ -33,18 +33,18 @@ public class Main {
                 new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary"},
                 new String[]{"https://www.wildberries.ru/catalog/elektronika"},
                 new String[]{"https://www.wildberries.ru/catalog/igrushki"},
-                new String[]{"https://www.wildberries.ru/catalog/dom/mebel"},
-                new String[]{"https://www.wildberries.ru/catalog/aksessuary/tovary-dlya-vzroslyh"},
-                new String[]{"https://www.wildberries.ru/catalog/pitanie"},
-                new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika"},
-                new String[]{"https://www.wildberries.ru/catalog/tovary-dlya-zhivotnyh"},
-                new String[]{"https://www.wildberries.ru/catalog/sport"},
-                new String[]{"https://www.wildberries.ru/catalog/knigi"},
-                new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya"},
-                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty"},
-                new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon"},
-                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/zdorove"},
-                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary"}
+//                new String[]{"https://www.wildberries.ru/catalog/dom/mebel"},
+//                new String[]{"https://www.wildberries.ru/catalog/aksessuary/tovary-dlya-vzroslyh"},
+//                new String[]{"https://www.wildberries.ru/catalog/pitanie"},
+//                new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika"},
+//                new String[]{"https://www.wildberries.ru/catalog/tovary-dlya-zhivotnyh"},
+//                new String[]{"https://www.wildberries.ru/catalog/sport"},
+//                new String[]{"https://www.wildberries.ru/catalog/knigi"},
+//                new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya"},
+//                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty"},
+//                new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon"},
+//                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/zdorove"},
+//                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary"}
         );
         ExecutorService executorService = Executors.newFixedThreadPool(2);
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH,true))){
