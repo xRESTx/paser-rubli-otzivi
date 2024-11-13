@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 public class ParseWB {
-    void Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool) throws InterruptedException, IOException {
+    void Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool,List<String> sentArticles, TgBot tgBot) throws InterruptedException, IOException {
 
         webDriver.manage().deleteAllCookies();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
@@ -50,7 +50,7 @@ public class ParseWB {
                     if(hrefSubMenu.equals("https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/chehly")){
                         continue;
                     }
-                    Bypass(webDriver,  writer, hrefSubMenu,subBool);
+                    Bypass(webDriver,  writer, hrefSubMenu,subBool,sentArticles,tgBot);
                 }
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
@@ -95,6 +95,7 @@ public class ParseWB {
 
             //######################################################CHANGE-PAGES###################################################
             List<WebElement> nextPage;
+            SentOneMessege sentOneMessege = new SentOneMessege();
             do{
                 List<WebElement> items = webDriver.findElements(By.cssSelector(".product-card.j-card-item"));
                 schetchik = 0;
@@ -129,7 +130,7 @@ public class ParseWB {
                 }
                 String itemName;
                 String itemCost;
-                String feedbackCost;
+                String itemfFeedBackCost;
                 String itemArticle;
 
                 //######################################################DOWNLOAD-INFO###################################################
@@ -142,13 +143,24 @@ public class ParseWB {
                         errorFile.write(String.format("%s\n", itemArticle));
                         continue;
                     }
-                    feedbackCost = feedbackPrice.get(0).getText();
+                    itemfFeedBackCost = feedbackPrice.get(0).getText();
                     WebElement name = item.findElement(By.cssSelector(".product-card__name"));
                     itemName = name.getText();
                     WebElement price = item.findElement(By.cssSelector(".price__lower-price"));
                     itemCost = price.getText();
-                    format.FormatToTXT(itemName, itemCost, feedbackCost, itemArticle, writer);
+
+                    itemCost = itemCost.replaceAll("[^0-9]", "");
+                    itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");
+                    itemName = itemName.replace("/","");
+
+                    format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writer);
                     count++;
+
+                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle);
+
+                    writer.write(itemArticle + "\n");
+                    writer.flush();
+                    sentArticles.add(itemArticle);
                 }
                 //######################################################DOWNLOAD-INFO###################################################
 
@@ -167,11 +179,11 @@ public class ParseWB {
         }
         return;
     }
-    void Parse(String url,String fileName){
+    void Parse(String url,BufferedWriter writer,List<String> sentArticles, TgBot tgBot){
 
         WebDriver webDriver = new FirefoxDriver();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileName))) {
+        try {
 
             webDriver.get(url);
             List<WebElement> GoToInMenus = wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(By.cssSelector(".menu-category__link")));
@@ -182,19 +194,22 @@ public class ParseWB {
                     if(hrefMenu.equals("https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya")){
                         continue;
                     }
+                    if(hrefMenu.equals("https://digital.wildberries.ru/catalog/audiobooks?sort=rating")
+                            || hrefMenu.equals("https://digital.wildberries.ru/catalog/books?sort=rating")){
+                        break;
+                    }
                     List<Boolean> subBool = new ArrayList<>();
-                    Bypass(webDriver, writer, hrefMenu, subBool);
+                    Bypass(webDriver, writer, hrefMenu, subBool, sentArticles,tgBot);
                 } catch (NoSuchElementException | InvalidSelectorException e) {
                     System.err.println("Skip, My Lord");
                     webDriver.quit();
-                    Parse(url,fileName);
+                    Parse(url,writer,sentArticles,tgBot);
                 }
             }
         }  catch (IOException | InterruptedException | TimeoutException e) {
             webDriver.quit();
-            Parse(url, fileName);
+            Parse(url, writer,sentArticles,tgBot);
             throw new RuntimeException(e);
-
         } finally {
             System.out.println("All completed, My Lord");
             webDriver.quit();

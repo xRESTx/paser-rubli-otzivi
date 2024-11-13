@@ -1,64 +1,69 @@
 package org.example;
 
 import com.pengrad.telegrambot.TelegramBot;
-import com.pengrad.telegrambot.UpdatesListener;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.TimeoutException;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
+    private static final String FILE_PATH = "error/sent_articl.txt";
+    private List<String> sentArticles = new ArrayList<>();
     public static void main(String[] args) throws InterruptedException, IOException {
-
+        Main main = new Main();
+        TgBot tgBot = new TgBot();
         ParseWB parseWB = new ParseWB();
+
+        main.sentArticles = readSentArticles();
+
+        tgBot.bot = new TelegramBot(System.getenv("botToken"));
+
         List<String[]> tasks = Arrays.asList(
                 new String[]{"https://www.wildberries.ru/catalog/zhenshchinam", "results/zhenshchinam.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/obuv", "results/obuv.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/detyam", "results/detyam.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/muzhchinam", "results/muzhchinam.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha", "results/dom-i-dacha.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/krasota", "results/krasota.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/aksessuary", "results/aksessuary.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary", "results/avtotovary.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/elektronika", "results/elektronika.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/igrushki", "results/igrushki.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/dom/mebel", "results/mebel.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/aksessuary/tovary-dlya-vzroslyh", "results/tovary-dlya-vzroslyh.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/pitanie", "results/pitanie.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika", "results/bytovaya-tehnika.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/tovary-dlya-zhivotnyh", "results/tovary-dlya-zhivotnyh.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/sport", "results/sport.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/knigi", "results/knigi.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya", "results/yuvelirnye-ukrasheniya.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty", "results/instrumenty.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon", "results/dachniy-sezon.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/zdorove", "results/zdorove.txt"},
-                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary", "results/kantstovary.txt"}
+                new String[]{"https://www.wildberries.ru/catalog/obuv"},
+                new String[]{"https://www.wildberries.ru/catalog/detyam"},
+                new String[]{"https://www.wildberries.ru/catalog/muzhchinam"},
+                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha"},
+                new String[]{"https://www.wildberries.ru/catalog/krasota"},
+                new String[]{"https://www.wildberries.ru/catalog/aksessuary"},
+                new String[]{"https://www.wildberries.ru/catalog/aksessuary/avtotovary"},
+                new String[]{"https://www.wildberries.ru/catalog/elektronika"},
+                new String[]{"https://www.wildberries.ru/catalog/igrushki"},
+                new String[]{"https://www.wildberries.ru/catalog/dom/mebel"},
+                new String[]{"https://www.wildberries.ru/catalog/aksessuary/tovary-dlya-vzroslyh"},
+                new String[]{"https://www.wildberries.ru/catalog/pitanie"},
+                new String[]{"https://www.wildberries.ru/catalog/bytovaya-tehnika"},
+                new String[]{"https://www.wildberries.ru/catalog/tovary-dlya-zhivotnyh"},
+                new String[]{"https://www.wildberries.ru/catalog/sport"},
+                new String[]{"https://www.wildberries.ru/catalog/knigi"},
+                new String[]{"https://www.wildberries.ru/catalog/yuvelirnye-ukrasheniya"},
+                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/instrumenty"},
+                new String[]{"https://www.wildberries.ru/catalog/dachniy-sezon"},
+                new String[]{"https://www.wildberries.ru/catalog/dom-i-dacha/zdorove"},
+                new String[]{"https://www.wildberries.ru/catalog/knigi-i-diski/kantstovary"}
         );
-//        ExecutorService executorService = Executors.newFixedThreadPool(4);
-//
-//        for (String[] task : tasks) {
-//            executorService.submit(() -> {
-//                try {
-//                    parseWB.Parse(task[0], task[1]);
-//                } catch (Exception e) {
-//                    e.printStackTrace();
-//                }
-//            });
-//        }
-//        executorService.shutdown();
-//        while (!executorService.isTerminated()) {
-//        }
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH,true))){
+            for (String[] task : tasks) {
+                executorService.submit(() -> {
+                    try {
+                        parseWB.Parse(task[0],writer, main.sentArticles, tgBot);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
+            executorService.shutdown();
+            while (!executorService.isTerminated()) {
+            }
+        }catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
 //        parseWB.Parse("https://www.wildberries.ru/catalog/elektronika", "results/elektronika.txt");
-//        Thread.sleep(5000);
-//        TxtReader txtReader = new TxtReader();
-//        txtReader.readTxtFile();
 //        //######################################################ONE-POISK-ZAPUSK###################################################
 //        WebDriver webDriver = new FirefoxDriver();
 //        BufferedWriter writer = new BufferedWriter(new FileWriter("test.txt",true));
@@ -69,5 +74,17 @@ public class Main {
 //        //######################################################ONE-POISK-ZAPUSK###################################################
 
         System.out.println("All tasks completed, My Lord");
+    }
+    private static List<String> readSentArticles(){
+        List<String> sentArticles = new ArrayList<>();
+        try(BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
+            String line;
+            while ((line = reader.readLine())!=null){
+                sentArticles.add(line);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return sentArticles;
     }
 }
