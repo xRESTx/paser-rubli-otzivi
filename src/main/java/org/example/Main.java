@@ -16,6 +16,8 @@ public class Main {
         TgBot tgBot = new TgBot();
         ParseWB parseWB = new ParseWB();
 
+        System.out.println(System.getenv("chat-id2"));
+        System.out.println(System.getenv("botToken"));
         main.sentArticles = readSentArticles();
 
         tgBot.bot = new TelegramBot(System.getenv("botToken"));
@@ -51,6 +53,7 @@ public class Main {
                     try {
                         parseWB.Parse(task[0],writer, main.sentArticles, tgBot);
                     } catch (Exception e) {
+                        System.out.println(main.sentArticles.size());
                         e.printStackTrace();
                     }
                 });
@@ -61,7 +64,6 @@ public class Main {
         }catch (IOException e) {
             throw new RuntimeException(e);
         }
-
 
 //        parseWB.Parse("https://www.wildberries.ru/catalog/elektronika", "results/elektronika.txt");
 //        //######################################################ONE-POISK-ZAPUSK###################################################

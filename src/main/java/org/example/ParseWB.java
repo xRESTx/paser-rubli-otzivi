@@ -153,7 +153,7 @@ public class ParseWB {
                     itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");
                     itemName = itemName.replace("/","");
 
-                    format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writer);
+//                    format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writer);
                     count++;
 
                     sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle);
