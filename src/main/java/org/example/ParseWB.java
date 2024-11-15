@@ -158,7 +158,6 @@ public class ParseWB {
 
                     sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle,writer, sentArticlesCommunity,salfetka6);
 
-                    sentArticles.add(itemArticle);
                 }
                 //######################################################DOWNLOAD-INFO###################################################
 

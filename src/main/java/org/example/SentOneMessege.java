@@ -53,7 +53,7 @@ public class SentOneMessege {
         if(sentArticlesCommunity.contains(article)){
             String chatCommunity = System.getenv("chat-id2");
             String messege;
-            double percent = Double.parseDouble(itemfFeedBackCost)/Integer.parseInt(itemCost);
+            double percent = (double) Integer.parseInt(itemfFeedBackCost) /Integer.parseInt(itemCost);
             if (percent>1 && percent<1.70 && salfetka6[0]<1) {
                 salfetka6[0]++;
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
@@ -111,7 +111,7 @@ public class SentOneMessege {
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                tgBot.sendMessage(chat_id,null , message);
+                tgBot.sendMessage(chat_id,0 , message);
                 System.out.println("Отложенное сообщение отправлено: " + message);
             }
         }, delay);
