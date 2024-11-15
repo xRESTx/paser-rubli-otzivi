@@ -66,6 +66,7 @@ public class TxtReader {
                             String percent = values[3].replace(',', '.');
                             String article = values[4];
                             String href = values[5];
+                            System.out.println("Считали " + name+price+feedback+percent+article+href);
                             if (!sentArticles.contains(article)) {
                                 String messege = name + "\nPrice " + price + "\nCashback " + feedback + "\n" + href;
                                 if (Double.parseDouble(percent) > 0.49 && Integer.parseInt(feedback) >= 1000 && Integer.parseInt(feedback) < 2500) {

@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 public class ParseWB {
-    void Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool,List<String> sentArticles, TgBot tgBot) throws InterruptedException, IOException {
+    void Bypass(WebDriver webDriver, BufferedWriter writer,String hrefMenu, List<Boolean> subBool,List<String> sentArticles,List<String> sentArticlesCommunity, TgBot tgBot,BufferedWriter writeAll,int[] salfetka6) throws InterruptedException, IOException {
 
         webDriver.manage().deleteAllCookies();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
@@ -50,7 +50,7 @@ public class ParseWB {
                     if(hrefSubMenu.equals("https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/chehly")){
                         continue;
                     }
-                    Bypass(webDriver,  writer, hrefSubMenu,subBool,sentArticles,tgBot);
+                    Bypass(webDriver,  writer, hrefSubMenu,subBool,sentArticles,sentArticlesCommunity,tgBot, writeAll, salfetka6);
                 }
                 webDriver.close();
                 webDriver.switchTo().window(originalTab);
@@ -153,13 +153,11 @@ public class ParseWB {
                     itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");
                     itemName = itemName.replace("/","");
 
-//                    format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writer);
+                    format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writeAll);
                     count++;
 
-                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle);
+                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle,writer, sentArticlesCommunity,salfetka6);
 
-                    writer.write(itemArticle + "\n");
-                    writer.flush();
                     sentArticles.add(itemArticle);
                 }
                 //######################################################DOWNLOAD-INFO###################################################
@@ -179,11 +177,11 @@ public class ParseWB {
         }
         return;
     }
-    void Parse(String url,BufferedWriter writer,List<String> sentArticles, TgBot tgBot){
+    void Parse(String url,BufferedWriter writer,List<String> sentArticles,List<String> sentArticlesCommunity, TgBot tgBot, String writerAll, int[] salfetka6){
 
         WebDriver webDriver = new FirefoxDriver();
         WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
-        try {
+        try (BufferedWriter writeAll = new BufferedWriter(new FileWriter(writerAll,true))){
 
             webDriver.get(url);
             List<WebElement> GoToInMenus = wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(By.cssSelector(".menu-category__link")));
@@ -199,16 +197,16 @@ public class ParseWB {
                         break;
                     }
                     List<Boolean> subBool = new ArrayList<>();
-                    Bypass(webDriver, writer, hrefMenu, subBool, sentArticles,tgBot);
+                    Bypass(webDriver, writer, hrefMenu, subBool, sentArticles, sentArticlesCommunity,tgBot, writeAll,salfetka6);
                 } catch (NoSuchElementException | InvalidSelectorException e) {
                     System.err.println("Skip, My Lord");
                     webDriver.quit();
-                    Parse(url,writer,sentArticles,tgBot);
+                    Parse(url,writer,sentArticles, sentArticlesCommunity,tgBot,writerAll,salfetka6);
                 }
             }
         }  catch (IOException | InterruptedException | TimeoutException e) {
             webDriver.quit();
-            Parse(url, writer,sentArticles,tgBot);
+            Parse(url, writer,sentArticles, sentArticlesCommunity,tgBot,writerAll,salfetka6);
             throw new RuntimeException(e);
         } finally {
             System.out.println("All completed, My Lord");

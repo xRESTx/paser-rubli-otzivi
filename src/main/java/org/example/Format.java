@@ -6,12 +6,8 @@ import java.io.IOException;
 
 public class Format {
     void FormatToTXT(String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer) throws IOException {
-        itemCost = itemCost.replaceAll("[^0-9]", "");
-        itemfFeedBackCost = itemfFeedBackCost.replaceAll("[^0-9]", "");
-
         int cost = 0;
         int feedbackCost = 0;
-        itemName = itemName.replace("/","");
 
         if (itemCost == null || itemCost.isEmpty()) {
             System.out.println("Str is empty, My Lord");
