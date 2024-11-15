@@ -43,6 +43,7 @@ public class TxtReader {
             String botToken = null;
             try (InputStream input = new FileInputStream("application.properties")) {
                 props.load(input);
+
                 chatId = props.getProperty("chat-id");
                 System.out.println("Chat ID from properties file: " + chatId);
                 botToken = props.getProperty("bot-token");
