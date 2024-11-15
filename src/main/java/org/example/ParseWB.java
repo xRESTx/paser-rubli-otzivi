@@ -156,7 +156,7 @@ public class ParseWB {
                     format.FormatToTXT(itemName, itemCost, itemfFeedBackCost, itemArticle, writeAll);
                     count++;
 
-                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle,writer, sentArticlesCommunity,salfetka6);
+//                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, itemCost, itemfFeedBackCost, itemArticle,writer, sentArticlesCommunity,salfetka6);
 
                 }
                 //######################################################DOWNLOAD-INFO###################################################
