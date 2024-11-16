@@ -10,6 +10,7 @@ import org.jsoup.Jsoup;
 import org.openqa.selenium.Cookie;
 
 import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
@@ -56,7 +57,6 @@ public class TestMessege {
                     return urls;
                 }
                 String query = jsonObject.has("query") && !jsonObject.get("query").isJsonNull() ? jsonObject.get("query").getAsString() : "";
-                System.out.println(shard + " " + query);
 
                 obj += "?sort=popular&page=1&ffeedbackpoints=1";
                 obj = ensureUrlStartsWithPrefix(obj);
@@ -102,7 +102,6 @@ public class TestMessege {
             totalPage = totalPage/ 100;
             totalPage++;
         }
-        System.out.println(totalPage);
         SentOneMessege sentOneMessege = new SentOneMessege();
         for(int i = 1; i<=totalPage; i++){
             String jsonUrl = "https://catalog.wb.ru/catalog/" + url1 + "/v2/catalog?ab_testing=false&appType=1&" + url2 + "&curr=rub&dest=-5551776&ffeedbackpoints=1&" + "page=" + i + "&sort=popular&spp=30";
@@ -110,13 +109,18 @@ public class TestMessege {
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                     .method(Connection.Method.GET)
                     .ignoreContentType(true);
-
+//            try(BufferedWriter writer = new BufferedWriter(new FileWriter("json.txt", true))){
+//                writer.write(jsonUrl);
+//            }
             for (Cookie cookie : seleniumCookies) {
                 connection.cookie(cookie.getName(), cookie.getValue());
             }
             Connection.Response response = connection.execute();
 
             String json = response.body();
+//            try(BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("txt.txt", true))){
+//                bufferedWriter.write(json);
+//            }
             JsonReader jsonReader = new JsonReader(new StringReader(json));
             jsonReader.setLenient(true);
 
@@ -138,10 +142,10 @@ public class TestMessege {
                         JsonObject sizeObject = sizeElement.getAsJsonObject();
                         int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
                         total = total/100;
-                        String messege = itemName + "\t" + total + "\t" + feedBackSum + "\t" + articule + "\n";
-                        writeAll.write(messege);
+                        String messege = itemName + "\t" + total + "\t" + feedBackSum + "\t" + articule;
+                        writeAll.write(messege+"\tстраница"+  String.valueOf(i)+"\n");
                         writeAll.flush();
-                        sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity,salfetka6);
+                        sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity,salfetka6, seleniumCookies);
                     }
                 }
             }

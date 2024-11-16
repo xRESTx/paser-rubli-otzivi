@@ -1,41 +1,66 @@
 package org.example;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.stream.JsonReader;
 import com.pengrad.telegrambot.TelegramBot;
+import org.jsoup.Connection;
+import org.jsoup.Jsoup;
+import org.openqa.selenium.Cookie;
 
 import java.io.*;
 import java.util.*;
 
 public class SentOneMessege {
-    public void readTxtFile(List<String> sentArticles, TgBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, int[] salfetka6) throws IOException, InterruptedException {
+    public void readTxtFile(List<String> sentArticles, TgBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, int[] salfetka6, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
             String chatId = System.getenv("chat-id");
             String messege;
+            
             double percent = Double.parseDouble(itemfFeedBackCost)/Integer.parseInt(itemCost);
-            if ((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
+            if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
                     || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
-                    ||  (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500)) {
+                    ||  (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500)) ) {
+                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                if(!bol){
+                    return;
+                }
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-                tgBot.sendMessage(chatId, 13, messege);
+                tgBot.sendMessage(chatId, 8, messege);//13
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
                 Thread.sleep(500);
             }
-            if (percent >= 1) {
+            if (percent >= 1 ) {
+                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                if(!bol){
+                    return;
+                }
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
                 tgBot.sendMessage(chatId, 2, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
                 Thread.sleep(500);
-            }else if (percent >= 0.9 && percent < 1) {
+            }else if (percent >= 0.9 && percent < 1 ) {
+                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                if(!bol){
+                    return;
+                }
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
                 tgBot.sendMessage(chatId, 4, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
                 Thread.sleep(500);
-            }else if (percent >= 0.8 && percent < 0.9) {
+            }else if (percent >= 0.8 && percent < 0.9 ) {
+                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                if(!bol){
+                    return;
+                }
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
                 tgBot.sendMessage(chatId, 6, messege);
                 writer.write(article + "\n");
@@ -46,40 +71,40 @@ public class SentOneMessege {
         }
 //        if(!sentArticlesCommunity.contains(article)){
 //            String chatCommunity = System.getenv("chat-id2");
-//            String messege;
+//            String messege = "";
 //            double percent = (double) Integer.parseInt(itemfFeedBackCost) /Integer.parseInt(itemCost);
-//            if (percent>1 && percent<1.70 && salfetka6[0]<1) {
+//            if (percent>1 && percent<1.70 && salfetka6[0]<1 ) {
 //                salfetka6[0]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
 //                sentArticlesCommunity.add(article);
 //                Thread.sleep(500);
-//            }else if(percent>0.9 && percent<1 && salfetka6[1]<3&& Integer.parseInt(itemfFeedBackCost)>300){
+//            }else if(percent>0.9 && percent<1 && salfetka6[1]<3&& Integer.parseInt(itemfFeedBackCost)>300 ){
 //                salfetka6[1]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
 //                sentArticlesCommunity.add(article);
 //                Thread.sleep(500);
 //            }
-//            else if(percent>0.8 && percent<0.9 && salfetka6[2]<5 && Integer.parseInt(itemfFeedBackCost)>400){
+//            else if(percent>0.8 && percent<0.9 && salfetka6[2]<5 && Integer.parseInt(itemfFeedBackCost)>400 ){
 //                salfetka6[2]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
 //                sentArticlesCommunity.add(article);
 //                Thread.sleep(500);
-//            }else if(percent>0.7 && percent<0.8 && salfetka6[3]<10 && Integer.parseInt(itemfFeedBackCost)>300){
+//            }else if(percent>0.7 && percent<0.8 && salfetka6[3]<10 && Integer.parseInt(itemfFeedBackCost)>300 ){
 //                salfetka6[3]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
 //                sentArticlesCommunity.add(article);
 //                Thread.sleep(500);
-//            }else if(percent>0.6 && percent<0.7 && salfetka6[4]<30 && Integer.parseInt(itemfFeedBackCost)>100){
+//            }else if(percent>0.6 && percent<0.7 && salfetka6[4]<30 && Integer.parseInt(itemfFeedBackCost)>100 ){
 //                salfetka6[4]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
 //                sentArticlesCommunity.add(article);
 //                Thread.sleep(500);
-//            }else if(percent>0.5 && percent<0.6 && salfetka6[5]<10 && Integer.parseInt(itemfFeedBackCost)>600){
+//            }else if(percent>0.5 && percent<0.6 && salfetka6[5]<10 && Integer.parseInt(itemfFeedBackCost)>600 ){
 //                salfetka6[5]++;
 //                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
 //                sendDelayedMessage(messege,tgBot,chatCommunity);
@@ -89,10 +114,50 @@ public class SentOneMessege {
 //        }
         return;
     }
+
+    public static boolean hasFeedbackPoints(String url1, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
+        String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
+        Connection connection = Jsoup.connect(jsonUrl)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                .method(Connection.Method.GET)
+                .ignoreContentType(true);
+
+        for (Cookie cookie : seleniumCookies) {
+            connection.cookie(cookie.getName(), cookie.getValue());
+        }
+
+        Connection.Response response = connection.execute();
+
+        String json = response.body();
+        System.out.println(json);
+
+        JsonReader jsonReader = new JsonReader(new StringReader(json));
+        jsonReader.setLenient(true);
+
+        JsonElement rootElement = JsonParser.parseReader(jsonReader);
+        JsonObject rootObject = rootElement.getAsJsonObject();
+
+        JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
+        boolean hasFeedbackPoint = false;
+        for (JsonElement productElement : productsArray) {
+            JsonObject productObject = productElement.getAsJsonObject();
+
+            if (productObject.has("feedbackPoints")) {
+                String feedBackSum = productObject.get("feedbackPoints").getAsString();
+                if (!feedBackSum.equals("0")) {
+                    hasFeedbackPoint = true;
+                    break;
+                }
+            }
+        }
+        return hasFeedbackPoint;
+    }
+
     String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article){
         String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
         return itemName + "\nPrice " + itemCost + "\nCashback " + itemfFeedBackCost + "\n" + href;
     }
+
     public static void sendDelayedMessage(String message, TgBot tgBot,String chat_id) {
         Timer timer = new Timer();
         long delay = 10*60*1000;
@@ -104,6 +169,3 @@ public class SentOneMessege {
         }, delay);
     }
 }
-
-
-

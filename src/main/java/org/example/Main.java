@@ -1,12 +1,6 @@
 package org.example;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.stream.JsonReader;
 import com.pengrad.telegrambot.TelegramBot;
-import org.jsoup.Connection;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.firefox.FirefoxDriver;
@@ -16,11 +10,12 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
     private static final String FILE_PATH = "error/sent_articles.txt";
     private static final String FILE_PATH_COMMUNITY = "error/sent_articles_community.txt";
-    private static final String ALL_ITEM = "error/all_item.txt";
+    private static final String ALL_ITEM = "error/all_items.txt";
     private List<String> sentArticles = new ArrayList<>();
     private List<String> sentArticlesCommunity = new ArrayList<>();
     private final int[] salfetka6 = new int[6];
@@ -45,32 +40,29 @@ public class Main {
         main.sentArticles = readSentArticles(FILE_PATH);
         main.sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
         Arrays.fill(main.salfetka6,0);
-        tgBot.bot = new TelegramBot(System.getenv("botToken"));
+        String botToken  = "";
+        tgBot.bot = new TelegramBot(botToken);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(3);
+        ExecutorService executorService = Executors.newFixedThreadPool(50);
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM, true));
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM));
              BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))){
-            for(String[] url : urls){
-
-            }
-        }
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM, true));
-             BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))){
+            AtomicInteger size = new AtomicInteger();
             for(String[] url : urls){
                 executorService.submit(() -> {
-                    System.out.println(url[0]);
-                    int c = 0;
+
                     String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30";
                     try {
                         writer.write(url[0]+"\n");
-                        c = TestMessege.test2(url[0], seleniumCookies, url[1], url[2], jsonPage,writer,main.sentArticles,main.sentArticlesCommunity,main.salfetka6, tgBot, writerCommunity);
+                        int localizes = TestMessege.test2(url[0], seleniumCookies, url[1], url[2], jsonPage,writer,main.sentArticles,main.sentArticlesCommunity,main.salfetka6, tgBot, writerCommunity);
+                        size.set(localizes);
                     } catch (InterruptedException | IOException e) {
                         throw new RuntimeException(e);
                     }
-                    System.out.println(c);
+
                 });
             }
+            System.out.println(size.get());
             executorService.shutdown();
             while (!executorService.isTerminated()) {
             }
