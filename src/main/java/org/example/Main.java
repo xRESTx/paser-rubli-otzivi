@@ -40,10 +40,11 @@ public class Main {
         main.sentArticles = readSentArticles(FILE_PATH);
         main.sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
         Arrays.fill(main.salfetka6,0);
-        String botToken  = "";
+        String botToken  = System.getenv("botToken");
+        System.out.println(botToken);
         tgBot.bot = new TelegramBot(botToken);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(50);
+        ExecutorService executorService = Executors.newFixedThreadPool(1000);
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM));
              BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))){

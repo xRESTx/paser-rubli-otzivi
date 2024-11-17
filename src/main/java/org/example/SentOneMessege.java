@@ -18,7 +18,8 @@ public class SentOneMessege {
         if (!sentArticles.contains(article)) {
             String chatId = System.getenv("chat-id");
             String messege;
-            
+
+
             double percent = Double.parseDouble(itemfFeedBackCost)/Integer.parseInt(itemCost);
             if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
                     || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
