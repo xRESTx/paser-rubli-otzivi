@@ -20,6 +20,11 @@ public class Main {
     private List<String> sentArticlesCommunity = new ArrayList<>();
     private final int[] salfetka6 = new int[6];
     public static void main(String[] args) throws InterruptedException, IOException {
+        while (1==1){
+            mainOld(args);
+        }
+    }
+    public static void mainOld(String[] args) throws InterruptedException, IOException {
         Main main = new Main();
         TgBot tgBot = new TgBot();
         FirefoxOptions options = new FirefoxOptions();

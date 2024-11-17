@@ -29,7 +29,7 @@ public class SentOneMessege {
                     return;
                 }
                 messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-                tgBot.sendMessage(chatId, 8, messege);//13
+                tgBot.sendMessage(chatId, 13, messege);//13
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
