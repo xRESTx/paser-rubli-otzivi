@@ -10,6 +10,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
@@ -20,13 +21,6 @@ public class Main {
     private List<String> sentArticlesCommunity = new ArrayList<>();
     private final int[] salfetka6 = new int[6];
     public static void main(String[] args) throws InterruptedException, IOException {
-        while (1==1){
-            mainOld(args);
-        }
-    }
-    public static void mainOld(String[] args) throws InterruptedException, IOException {
-        Main main = new Main();
-        TgBot tgBot = new TgBot();
         FirefoxOptions options = new FirefoxOptions();
         options.addArguments("--headless");
 
@@ -40,6 +34,13 @@ public class Main {
         Set<Cookie> seleniumCookies = driver.manage().getCookies();
         driver.quit();
 
+        while (true){
+            mainOld(args,seleniumCookies);
+        }
+    }
+    public static void mainOld(String[] args, Set<Cookie> seleniumCookies) throws InterruptedException, IOException {
+        Main main = new Main();
+        TgBot tgBot = new TgBot();
         List<String[]> urls = TestMessege.getURL(seleniumCookies);
 
         main.sentArticles = readSentArticles(FILE_PATH);
@@ -49,33 +50,32 @@ public class Main {
         System.out.println(botToken);
         tgBot.bot = new TelegramBot(botToken);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(1000);
-
+        ExecutorService executorService = Executors.newFixedThreadPool(25);
+        AtomicInteger size = new AtomicInteger();
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM));
              BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))){
-            AtomicInteger size = new AtomicInteger();
             for(String[] url : urls){
                 executorService.submit(() -> {
 
                     String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30";
-                    try {
-                        writer.write(url[0]+"\n");
-                        int localizes = TestMessege.test2(url[0], seleniumCookies, url[1], url[2], jsonPage,writer,main.sentArticles,main.sentArticlesCommunity,main.salfetka6, tgBot, writerCommunity);
-                        size.set(localizes);
-                    } catch (InterruptedException | IOException e) {
-                        throw new RuntimeException(e);
-                    }
+//                    try {
+//                        writer.write(url[0]+"\n");
+//                        int localizes = TestMessege.test2(url[0], seleniumCookies, url[1], url[2], jsonPage,writer,main.sentArticles,main.sentArticlesCommunity,main.salfetka6, tgBot, writerCommunity);
+//                        size.addAndGet(localizes);
+//                    } catch (InterruptedException | IOException e) {
+//                        throw new RuntimeException(e);
+//                    }
 
                 });
             }
-            System.out.println(size.get());
+
             executorService.shutdown();
             while (!executorService.isTerminated()) {
             }
         }catch (IOException e) {
             throw new RuntimeException(e);
         }
-
+        System.out.println(size.get());
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))) {
             for (String item : main.sentArticlesCommunity) {
@@ -168,6 +168,4 @@ public class Main {
         }
         return sentArticles;
     }
-
-
 }

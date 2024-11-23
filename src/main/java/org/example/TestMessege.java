@@ -14,6 +14,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 
 public class TestMessege {
 
@@ -76,7 +77,7 @@ public class TestMessege {
         return prefixDigital + url + "";
     }
 
-    public static int test2(String href, Set<Cookie> seleniumCookies, String url1, String url2, String UrlPage, BufferedWriter writeAll, List<String> sentArticles,List<String> sentArticlesCommunity, int[] salfetka6, TgBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
+    public static int test2(String href, Set<Cookie> seleniumCookies, String url1, String url2, String UrlPage, BufferedWriter writeAll, List<String> sentArticles, List<String> sentArticlesCommunity, int[] salfetka6, MyDualBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
 
         Connection connectionPage = Jsoup.connect(UrlPage)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
@@ -143,8 +144,8 @@ public class TestMessege {
                         int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
                         total = total/100;
                         String messege = itemName + "\t" + total + "\t" + feedBackSum + "\t" + articule;
-                        writeAll.write(messege+"\tстраница"+  String.valueOf(i)+"\n");
-                        writeAll.flush();
+//                        writeAll.write(messege+"\tстраница"+  String.valueOf(i)+"\n");
+//                        writeAll.flush();
                         sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity,salfetka6, seleniumCookies);
                     }
                 }
