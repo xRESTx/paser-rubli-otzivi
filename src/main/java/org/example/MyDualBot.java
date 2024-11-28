@@ -3,16 +3,18 @@ package org.example;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.SendMessage;
+import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.response.SendResponse;
-import org.openqa.selenium.Cookie;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+
+import org.openqa.selenium.Cookie;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.firefox.FirefoxOptions;
 
 import java.io.*;
 import java.util.*;
@@ -55,8 +57,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 startTask(chatId);
             } else if (messageText.equals("/stop")) {
                 stopTask(chatId);
-            } else {
-                sendPengradMessage(String.valueOf(chatId), 0, "Unknown command.");
             }
         }
     }
@@ -140,7 +140,6 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         }
     }
-
     private int getRetryAfter(SendResponse response) {
         String description = response.description();
         if (description != null && description.contains("retry after")) {
@@ -158,7 +157,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
         Arrays.fill(salfetka6, 0);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(25);
+        ExecutorService executorService = Executors.newFixedThreadPool(200);
         AtomicInteger size = new AtomicInteger();
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM));
              BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
@@ -217,14 +216,16 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-    public void sendMessage(String chatId, Integer messageThreadId, String messageText) {
+    public void sendMessage(String chatId, Integer messageThreadId, String messageText, ByteArrayInputStream bytePhoto) throws IOException {
         boolean sent = false;
         while (!sent) {
-            SendMessage request = new SendMessage(chatId, messageText);
-            if (messageThreadId != 0) {
-                request = request.replyToMessageId(messageThreadId);
-            }
-            SendResponse response = pengradBot.execute(request);
+            byte[] imageBytes = bytePhoto.readAllBytes();
+
+            // Отправка фотографии
+            SendPhoto sendPhotoRequest = new SendPhoto(chatId, imageBytes)
+                    .caption(messageText)
+                    .messageThreadId(messageThreadId);
+            SendResponse response = pengradBot.execute(sendPhotoRequest);
 
             if (response.isOk()) {
                 System.out.println("Message sent successfully");

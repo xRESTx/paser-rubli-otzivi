@@ -20,8 +20,12 @@ import java.io.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.text.DecimalFormat;
+import static org.example.SentPhoto.photo;
 
 public class SentOneMessege {
+
+    public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA"));
 
     public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, int[] salfetka6, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
@@ -36,8 +40,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article);
-                tgBot.sendMessage(chatId, 13, messege);//13
+                ByteArrayInputStream bytePhoto = photo(article);
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
+                tgBot.sendMessage(chatId, 13, messege, bytePhoto);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -48,8 +53,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article);
-                tgBot.sendMessage(chatId, 2, messege);
+                ByteArrayInputStream bytePhoto = photo(article);
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
+                tgBot.sendMessage(chatId, 2, messege,bytePhoto);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -59,8 +65,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article);
-                tgBot.sendMessage(chatId, 4, messege);
+                ByteArrayInputStream bytePhoto = photo(article);
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
+                tgBot.sendMessage(chatId, 4, messege,bytePhoto);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -70,8 +77,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article);
-                tgBot.sendMessage(chatId, 6, messege);
+                ByteArrayInputStream bytePhoto = photo(article);
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
+                tgBot.sendMessage(chatId, 6, messege,bytePhoto);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -87,8 +95,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article);
-                tgBot.sendMessage(chatId, 8, messege);
+                ByteArrayInputStream bytePhoto = photo(article);
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
+                tgBot.sendMessage(chatId, 8, messege,bytePhoto);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticlesCommunity.add(article);
@@ -196,7 +205,12 @@ public class SentOneMessege {
         boolean hasFeedbackPoint = false;
         for (JsonElement productElement : productsArray) {
             JsonObject productObject = productElement.getAsJsonObject();
-
+            if(productObject.has("supplier")){
+                String supplier = productObject.get("supplier").getAsString();
+                if(pidory.contains(supplier)){
+                    return false;
+                }
+            }
             if (productObject.has("feedbackPoints")) {
                 String feedBackSum = productObject.get("feedbackPoints").getAsString();
                 if (!feedBackSum.equals("0")) {
@@ -208,19 +222,23 @@ public class SentOneMessege {
         return hasFeedbackPoint;
     }
 
-    String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article){
+    String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article, Double percent){
         String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
-        return itemName + "\nPrice " + itemCost + "\nCashback " + itemfFeedBackCost + "\n" + href;
+        DecimalFormat df = new DecimalFormat("#.##");
+        String formattedString = itemName + "\n\uD83D\uDCB8Price " + itemCost + "\u20BD\n" +
+                "\uD83E\uDD11Cashback " + itemfFeedBackCost + "\u20BD\n" +
+                "\uD83D\uDCAFPercent " + df.format(percent * 100) + "%\n" + href;
+        return formattedString;
     }
 
-    public static void sendDelayedMessage(String message, TgBot tgBot,String chat_id) {
-        Timer timer = new Timer();
-        long delay = 10*60*1000;
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                tgBot.sendMessage(chat_id,0 , message);
-            }
-        }, delay);
-    }
+//    public static void sendDelayedMessage(String message, TgBot tgBot,String chat_id) {
+//        Timer timer = new Timer();
+//        long delay = 10*60*1000;
+//        timer.schedule(new TimerTask() {
+//            @Override
+//            public void run() {
+//                tgBot.sendMessage(chat_id,0 , message);
+//            }
+//        }, delay);
+//    }
 }

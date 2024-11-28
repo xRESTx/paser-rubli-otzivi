@@ -132,6 +132,7 @@ public class TestMessege {
             List<String> newInem = new ArrayList<>();
             for (JsonElement productElement : productsArray) {
                 JsonObject productObject = productElement.getAsJsonObject();
+
                 String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
                 String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
                 String articule = productObject.has("id") ? productObject.get("id").getAsString() : "0";
@@ -143,7 +144,7 @@ public class TestMessege {
                         JsonObject sizeObject = sizeElement.getAsJsonObject();
                         int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
                         total = total/100;
-                        String messege = itemName + "\t" + total + "\t" + feedBackSum + "\t" + articule;
+//                        String messege = itemName + "\t" + total + "\t" + feedBackSum + "\t" + articule;
 //                        writeAll.write(messege+"\tстраница"+  String.valueOf(i)+"\n");
 //                        writeAll.flush();
                         sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity,salfetka6, seleniumCookies);

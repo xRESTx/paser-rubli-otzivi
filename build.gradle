@@ -32,6 +32,8 @@ dependencies {
     implementation 'org.jsoup:jsoup:1.15.4'
 
     implementation 'ch.qos.logback:logback-classic:1.4.7'
+
+    implementation 'com.twelvemonkeys.imageio:imageio-webp:3.9.4'
 }
 
 test {
