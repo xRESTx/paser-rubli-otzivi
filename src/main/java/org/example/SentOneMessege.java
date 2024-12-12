@@ -19,17 +19,16 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import java.io.*;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.Semaphore;
 import java.text.DecimalFormat;
-import static org.example.SentPhoto.photo;
 
 public class SentOneMessege {
 
-    public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA"));
+    public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA","elena novvv колье","Славянский Дворъ"));
 
-    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, int[] salfetka6, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
+    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
-            String chatId = System.getenv("chat-id");
+            String chatId = "-1002340997107";
+//            String chatId = System.getenv("chat-id");
             String messege;
 
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
@@ -40,9 +39,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                ByteArrayInputStream bytePhoto = photo(article);
+//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 13, messege, bytePhoto);
+                tgBot.sendMessage(chatId, 13, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -53,9 +52,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                ByteArrayInputStream bytePhoto = photo(article);
+//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 2, messege,bytePhoto);
+                tgBot.sendMessage(chatId, 2, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -65,9 +64,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                ByteArrayInputStream bytePhoto = photo(article);
+//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 4, messege,bytePhoto);
+                tgBot.sendMessage(chatId, 4, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -77,9 +76,9 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
-                ByteArrayInputStream bytePhoto = photo(article);
+//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 6, messege,bytePhoto);
+                tgBot.sendMessage(chatId, 6, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -89,66 +88,22 @@ public class SentOneMessege {
         if (!sentArticlesCommunity.contains(article)) {
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
             String messege;
-            String chatId = System.getenv("chat-id3");
+//            String chatId = System.getenv("chat-id3");
+            String chatId = "-1002397733938";
             if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
                 boolean bol = hasFeedbackPoints(article, seleniumCookies);
                 if (!bol) {
                     return;
                 }
-                ByteArrayInputStream bytePhoto = photo(article);
+//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 8, messege,bytePhoto);
+                tgBot.sendMessage(chatId, 8, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticlesCommunity.add(article);
                 Thread.sleep(500);
             }
         }
-
-
-//        if(!sentArticlesCommunity.contains(article)){
-//            String chatCommunity = System.getenv("chat-id2");
-//            String messege = "";
-//            double percent = (double) Integer.parseInt(itemfFeedBackCost) /Integer.parseInt(itemCost);
-//            if (percent>1 && percent<1.70 && salfetka6[0]<1 ) {
-//                salfetka6[0]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }else if(percent>0.9 && percent<1 && salfetka6[1]<3&& Integer.parseInt(itemfFeedBackCost)>300 ){
-//                salfetka6[1]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }
-//            else if(percent>0.8 && percent<0.9 && salfetka6[2]<5 && Integer.parseInt(itemfFeedBackCost)>400 ){
-//                salfetka6[2]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }else if(percent>0.7 && percent<0.8 && salfetka6[3]<10 && Integer.parseInt(itemfFeedBackCost)>300 ){
-//                salfetka6[3]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }else if(percent>0.6 && percent<0.7 && salfetka6[4]<30 && Integer.parseInt(itemfFeedBackCost)>100 ){
-//                salfetka6[4]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }else if(percent>0.5 && percent<0.6 && salfetka6[5]<10 && Integer.parseInt(itemfFeedBackCost)>600 ){
-//                salfetka6[5]++;
-//                messege = createMessege( itemName,  itemCost,  itemfFeedBackCost,  article);
-//                sendDelayedMessage(messege,tgBot,chatCommunity);
-//                sentArticlesCommunity.add(article);
-//                Thread.sleep(500);
-//            }
-//        }
         return;
     }
     public boolean checkFeedbackPoint(String url1) throws InterruptedException {
@@ -230,15 +185,4 @@ public class SentOneMessege {
                 "\uD83D\uDCAFPercent " + df.format(percent * 100) + "%\n" + href;
         return formattedString;
     }
-
-//    public static void sendDelayedMessage(String message, TgBot tgBot,String chat_id) {
-//        Timer timer = new Timer();
-//        long delay = 10*60*1000;
-//        timer.schedule(new TimerTask() {
-//            @Override
-//            public void run() {
-//                tgBot.sendMessage(chat_id,0 , message);
-//            }
-//        }, delay);
-//    }
 }

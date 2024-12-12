@@ -3,8 +3,8 @@ package org.example;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.SendMessage;
-import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.response.SendResponse;
+
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -23,15 +23,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MyDualBot extends TelegramLongPollingBot {
-    private static final String FILE_PATH = "error/sent_articles.txt";
-    private static final String FILE_PATH_COMMUNITY = "error/sent_articles_community.txt";
-    private static final String ALL_ITEM = "error/all_items.txt";
+    private static final String FILE_PATH = "sent_articles.txt";
+    private static final String FILE_PATH_COMMUNITY = "sent_articles_community.txt";
     private List<String> sentArticles = new ArrayList<>();
     private List<String> sentArticlesCommunity = new ArrayList<>();
-    private final int[] salfetka6 = new int[6];
     private final TelegramBot pengradBot;
     private Thread taskThread;
     private volatile boolean running = false;
+    private static Set<Cookie> seleniumCookies;
 
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
@@ -44,7 +43,8 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return System.getenv("botToken");
+        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
+//        return System.getenv("botToken");
     }
 
     @Override
@@ -70,21 +70,8 @@ public class MyDualBot extends TelegramLongPollingBot {
         running = true;
         taskThread = new Thread(() -> {
             try {
-                FirefoxOptions options = new FirefoxOptions();
-                options.addArguments("--headless");
-
-                WebDriver driver = new FirefoxDriver(options);
-
-                String urlWb = "https://www.wildberries.ru/";
-
-                driver.get(urlWb);
-                Thread.sleep(1000);
-
-                Set<Cookie> seleniumCookies = driver.manage().getCookies();
-                driver.quit();
-
                 while (running) {
-                    mainOld(new String[]{}, seleniumCookies);
+                    mainOld(seleniumCookies);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -152,22 +139,20 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         return 0;
     }
-    public void mainOld(String[] args, Set<Cookie> seleniumCookies) throws InterruptedException, IOException {
+    public void mainOld(Set<Cookie> seleniumCookies) throws InterruptedException, IOException {
         sentArticles = readSentArticles(FILE_PATH);
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
-        Arrays.fill(salfetka6, 0);
 
         ExecutorService executorService = Executors.newFixedThreadPool(200);
         AtomicInteger size = new AtomicInteger();
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(ALL_ITEM));
-             BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
+        try (BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
             List<String[]> urls = TestMessege.getURL(seleniumCookies);
             for (String[] url : urls) {
                 executorService.submit(() -> {
                     String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30";
                     try {
 //                        writer.write(url[0] + "\n");
-                        int localizes = TestMessege.test2(url[0], seleniumCookies, url[1], url[2], jsonPage, writer, sentArticles, sentArticlesCommunity, salfetka6, this, writerCommunity);
+                        int localizes = TestMessege.test2(seleniumCookies, url[1], url[2], jsonPage, sentArticles, sentArticlesCommunity, this, writerCommunity);
                         size.addAndGet(localizes);
                     } catch (InterruptedException | IOException e) {
                         throw new RuntimeException(e);
@@ -190,8 +175,6 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        System.out.println("All tasks completed, My Lord");
     }
 
     private static List<String> readSentArticles(String FILE_PATH) {
@@ -207,26 +190,39 @@ public class MyDualBot extends TelegramLongPollingBot {
         return sentArticles;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
+
+        FirefoxOptions options = new FirefoxOptions();
+        options.addArguments("--headless");
+
+        WebDriver driver = new FirefoxDriver(options);
+
+        String urlWb = "https://www.wildberries.ru/";
+
+        driver.get(urlWb);
+        Thread.sleep(1000);
+
+        seleniumCookies = driver.manage().getCookies();
+        driver.quit();
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot(System.getenv("botToken")));
+            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
     }
 
-    public void sendMessage(String chatId, Integer messageThreadId, String messageText, ByteArrayInputStream bytePhoto) throws IOException {
+    public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {// ByteArrayInputStream bytePhoto
         boolean sent = false;
         while (!sent) {
-            byte[] imageBytes = bytePhoto.readAllBytes();
-
-            // Отправка фотографии
-            SendPhoto sendPhotoRequest = new SendPhoto(chatId, imageBytes)
-                    .caption(messageText)
-                    .messageThreadId(messageThreadId);
-            SendResponse response = pengradBot.execute(sendPhotoRequest);
-
+//            byte[] imageBytes = bytePhoto.readAllBytes();
+//
+//            SendPhoto sendPhotoRequest = new SendPhoto(chatId, imageBytes)
+//                    .caption(messageText)
+//                    .messageThreadId(messageThreadId);
+//            SendResponse response = pengradBot.execute(sendPhotoRequest);
+            SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId);
+            SendResponse response = pengradBot.execute(sendMessage);
             if (response.isOk()) {
                 System.out.println("Message sent successfully");
                 sent = true;

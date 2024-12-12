@@ -15,27 +15,17 @@ dependencies {
     implementation 'org.seleniumhq.selenium:selenium-java:4.25.0'
     testImplementation 'org.seleniumhq.selenium:selenium-java:4.25.0'
 
-    implementation 'org.projectlombok:lombok:1.18.26'
-
     implementation 'com.github.pengrad:java-telegram-bot-api:7.11.0'
-    implementation 'org.telegram:telegrambots:6.5.0'
+    implementation 'org.telegram:telegrambots:6.9.7.1'
 
     implementation 'org.json:json:20210307'
-
-    implementation 'org.apache.poi:poi:5.2.2'
-    implementation 'org.apache.poi:poi-ooxml:5.2.2'
-    implementation 'org.apache.poi:poi-ooxml-schemas:4.1.2'
-    implementation 'org.apache.poi:poi-scratchpad:5.2.2'
-    implementation 'org.apache.logging.log4j:log4j-core:2.17.1'
-    implementation 'org.apache.logging.log4j:log4j-api:2.17.1'
-
     implementation 'org.jsoup:jsoup:1.15.4'
 
-    implementation 'ch.qos.logback:logback-classic:1.4.7'
-
-    implementation 'com.twelvemonkeys.imageio:imageio-webp:3.9.4'
+    implementation 'org.slf4j:slf4j-nop:2.0.6'
 }
 
 test {
     useJUnitPlatform()
 }
+
+
