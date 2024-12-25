@@ -27,7 +27,7 @@ public class SentOneMessege {
 
     public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
-            String chatId = "-1002340997107";
+
 //            String chatId = System.getenv("chat-id");
             String messege;
 
@@ -39,9 +39,10 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
+                String chatId = "-1002290311759";
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 13, messege);
+                tgBot.sendMessage(chatId, 0, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -52,9 +53,10 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
+                String chatId = "-1002402655346";
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 2, messege);
+                tgBot.sendMessage(chatId, 0, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -64,9 +66,10 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
+                String chatId = "-1002446322077";
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 4, messege);
+                tgBot.sendMessage(chatId, 0, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -76,9 +79,10 @@ public class SentOneMessege {
                 if (!bol) {
                     return;
                 }
+                String chatId = "-1002305962649";
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
-                tgBot.sendMessage(chatId, 6, messege);
+                tgBot.sendMessage(chatId, 0, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
