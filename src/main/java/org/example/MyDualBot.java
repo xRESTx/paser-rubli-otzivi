@@ -151,7 +151,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 executorService.submit(() -> {
                     String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30";
                     try {
-//                        writer.write(url[0] + "\n");
+
                         int localizes = TestMessege.test2(seleniumCookies, url[1], url[2], jsonPage, sentArticles, sentArticlesCommunity, this, writerCommunity);
                         size.addAndGet(localizes);
                     } catch (InterruptedException | IOException e) {
@@ -215,12 +215,6 @@ public class MyDualBot extends TelegramLongPollingBot {
     public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {// ByteArrayInputStream bytePhoto
         boolean sent = false;
         while (!sent) {
-//            byte[] imageBytes = bytePhoto.readAllBytes();
-//
-//            SendPhoto sendPhotoRequest = new SendPhoto(chatId, imageBytes)
-//                    .caption(messageText)
-//                    .messageThreadId(messageThreadId);
-//            SendResponse response = pengradBot.execute(sendPhotoRequest);
             SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId);
             SendResponse response = pengradBot.execute(sendMessage);
             if (response.isOk()) {

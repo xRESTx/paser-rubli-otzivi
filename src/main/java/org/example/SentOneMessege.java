@@ -28,7 +28,7 @@ public class SentOneMessege {
     public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
 
-//            String chatId = System.getenv("chat-id");
+            String chatIds = "-1002340997107";
             String messege;
 
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
@@ -43,6 +43,7 @@ public class SentOneMessege {
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
+                tgBot.sendMessage(chatIds, 13, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -57,6 +58,7 @@ public class SentOneMessege {
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
+                tgBot.sendMessage(chatIds, 2, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -70,6 +72,8 @@ public class SentOneMessege {
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
+
+                tgBot.sendMessage(chatIds, 4, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
@@ -83,6 +87,7 @@ public class SentOneMessege {
 //                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
+                tgBot.sendMessage(chatIds, 6, messege);
                 writer.write(article + "\n");
                 writer.flush();
                 sentArticles.add(article);
