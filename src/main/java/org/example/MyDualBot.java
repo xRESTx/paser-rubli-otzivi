@@ -149,7 +149,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             List<String[]> urls = TestMessege.getURL(seleniumCookies);
             for (String[] url : urls) {
                 executorService.submit(() -> {
-                    String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30";
+                    String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2];
                     try {
 
                         int localizes = TestMessege.test2(seleniumCookies, url[1], url[2], jsonPage, sentArticles, sentArticlesCommunity, this, writerCommunity);
