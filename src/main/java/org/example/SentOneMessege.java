@@ -10,6 +10,7 @@ import org.jsoup.Jsoup;
 import org.openqa.selenium.Cookie;
 
 import java.io.*;
+import java.net.HttpCookie;
 import java.util.*;
 import java.text.DecimalFormat;
 
@@ -17,7 +18,7 @@ public class SentOneMessege {
 
     public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA","elena novvv колье","Славянский Дворъ"));
 
-    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
+    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<HttpCookie> seleniumCookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
 
             String chatIds = "-1002340997107";
@@ -101,17 +102,16 @@ public class SentOneMessege {
         }
     }
 
-    public static boolean hasFeedbackPoints(String url1, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
+    public static boolean hasFeedbackPoints(String url1, Set<HttpCookie> seleniumCookies) throws IOException, InterruptedException {
         String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
         Connection connection = Jsoup.connect(jsonUrl)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
 
-        for (Cookie cookie : seleniumCookies) {
+        for (HttpCookie cookie : seleniumCookies) {
             connection.cookie(cookie.getName(), cookie.getValue());
         }
-
         Connection.Response response = connection.execute();
 
         String json = response.body();

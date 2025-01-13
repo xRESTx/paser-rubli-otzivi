@@ -8,23 +8,21 @@ import com.pengrad.telegrambot.response.SendResponse;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-import org.openqa.selenium.Cookie;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxOptions;
-
-
+import java.net.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,7 +35,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private final TelegramBot pengradBot;
     private Thread taskThread;
     private volatile boolean running = false;
-    private static Set<Cookie> seleniumCookies;
+    private static Set<HttpCookie> seleniumCookies;
 
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
@@ -91,11 +89,6 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     private void stopTask(long chatId) {
-        if (!running) {
-            sendPengradMessage(String.valueOf(chatId), 0, "Task is not running.");
-            return;
-        }
-
         running = false;
         try {
             taskThread.join();
@@ -113,22 +106,22 @@ public class MyDualBot extends TelegramLongPollingBot {
                 request = request.replyToMessageId(messageThreadId);
             }
             SendResponse response = pengradBot.execute(request);
-//
-//            if (response.isOk()) {
-//                sent = true;
-//            } else {
-//                int retryAfter = getRetryAfter(response);
-//                if (retryAfter > 0) {
-//                    try {
-//                        Thread.sleep(retryAfter * 1000L);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                        break;
-//                    }
-//                } else {
-//                    break;
-//                }
-//            }
+
+            if (response.isOk()) {
+                sent = true;
+            } else {
+                int retryAfter = getRetryAfter(response);
+                if (retryAfter > 0) {
+                    try {
+                        Thread.sleep(retryAfter * 1000L);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
         }
     }
     private int getRetryAfter(SendResponse response) {
@@ -143,7 +136,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         return 0;
     }
-    public void mainOld(Set<Cookie> seleniumCookies) throws InterruptedException, IOException {
+    public void mainOld(Set<HttpCookie> seleniumCookies) throws InterruptedException, IOException {
         sentArticles = readSentArticles(FILE_PATH);
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
 
@@ -193,23 +186,42 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     public static void main(String[] args) throws InterruptedException {
+        // Настройка CookieManager
+        CookieManager cookieManager = new CookieManager();
+        cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+        CookieHandler.setDefault(cookieManager);
 
-        FirefoxOptions options = new FirefoxOptions();
-        options.addArguments("--headless");
+        // Создание HttpClient с поддержкой CookieManager
+        HttpClient client = HttpClient.newBuilder()
+                .cookieHandler(cookieManager)
+                .build();
 
-        WebDriver driver = new FirefoxDriver(options);
-
+        // URL целевого сайта
         String urlWb = "https://www.wildberries.ru/";
 
-        driver.get(urlWb);
-        Thread.sleep(1000);
-
-        seleniumCookies = driver.manage().getCookies();
-        driver.quit();
         try {
+            // Отправка GET-запроса
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(urlWb))
+                    .GET()
+                    .build();
+
+            // Получение ответа
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            // Проверка статуса ответа
+            if (response.statusCode() == 200) {
+                System.out.println("Сайт успешно загружен.");
+            } else {
+                System.out.println("Ошибка при загрузке сайта: " + response.statusCode());
+            }
+
+            // Извлечение cookies из CookieManager
+            seleniumCookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
+            seleniumCookies.forEach(cookie -> System.out.println(cookie));
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
-        } catch (TelegramApiException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

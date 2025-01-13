@@ -12,17 +12,18 @@ import org.openqa.selenium.Cookie;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.StringReader;
+import java.net.HttpCookie;
 import java.util.*;
 
 public class TestMessege {
 
-    public static List<String[]> getURL(Set<Cookie> seleniumCookies) throws IOException {
+    public static List<String[]> getURL(Set<HttpCookie> seleniumCookies) throws IOException {
         Connection connection = Jsoup.connect("https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v3.json")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
 
-        for (Cookie cookie : seleniumCookies) {
+        for (HttpCookie cookie : seleniumCookies) {
             connection.cookie(cookie.getName(), cookie.getValue());
         }
         Connection.Response response = connection.execute();
@@ -75,14 +76,14 @@ public class TestMessege {
         return prefixDigital + url + "";
     }
 
-    public static int test2(Set<Cookie> seleniumCookies, String url1, String url2, String UrlPage, List<String> sentArticles, List<String> sentArticlesCommunity, MyDualBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
+    public static int test2(Set<HttpCookie> seleniumCookies, String url1, String url2, String UrlPage, List<String> sentArticles, List<String> sentArticlesCommunity, MyDualBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
 
         Connection connectionPage = Jsoup.connect(UrlPage)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
 
-        for (Cookie cookie : seleniumCookies) {
+        for (HttpCookie cookie : seleniumCookies) {
             connectionPage.cookie(cookie.getName(), cookie.getValue());
         }
         Connection.Response responsePage = connectionPage.execute();
@@ -108,7 +109,7 @@ public class TestMessege {
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                     .method(Connection.Method.GET)
                     .ignoreContentType(true);
-            for (Cookie cookie : seleniumCookies) {
+            for (HttpCookie cookie : seleniumCookies) {
                 connection.cookie(cookie.getName(), cookie.getValue());
             }
             Connection.Response response = connection.execute();
