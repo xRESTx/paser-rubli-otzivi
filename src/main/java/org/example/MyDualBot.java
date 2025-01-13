@@ -14,8 +14,16 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-import java.io.*;
-import java.util.*;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -121,13 +129,10 @@ public class MyDualBot extends TelegramLongPollingBot {
             SendResponse response = pengradBot.execute(request);
 
             if (response.isOk()) {
-                System.out.println("Message sent successfully");
                 sent = true;
             } else {
-                System.out.println("Failed to send message: " + response.errorCode() + " - " + response.description());
                 int retryAfter = getRetryAfter(response);
                 if (retryAfter > 0) {
-                    System.out.println("Too Many Requests: retry after " + retryAfter + " seconds");
                     try {
                         Thread.sleep(retryAfter * 1000L);
                     } catch (InterruptedException e) {
@@ -181,7 +186,6 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println(size.get());
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))) {
             for (String item : sentArticlesCommunity) {
@@ -227,13 +231,10 @@ public class MyDualBot extends TelegramLongPollingBot {
             SendResponse response = pengradBot.execute(request);
 
             if (response.isOk()) {
-                System.out.println("Message sent successfully");
                 sent = true;
             } else {
-                System.out.println("Failed to send message: " + response.errorCode() + " - " + response.description());
                 int retryAfter = getRetryAfter(response);
                 if (retryAfter > 0) {
-                    System.out.println("Too Many Requests: retry after " + retryAfter + " seconds");
                     try {
                         Thread.sleep(retryAfter * 1000L);
                     } catch (InterruptedException e) {
