@@ -7,17 +7,9 @@ import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxOptions;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.*;
-import java.time.Duration;
 import java.util.*;
 import java.text.DecimalFormat;
 
@@ -40,7 +32,6 @@ public class SentOneMessege {
                     return;
                 }
                 String chatId = "-1002290311759";
-//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
                 tgBot.sendMessage(chatIds, 13, messege);
@@ -55,7 +46,6 @@ public class SentOneMessege {
                     return;
                 }
                 String chatId = "-1002402655346";
-//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
                 tgBot.sendMessage(chatIds, 2, messege);
@@ -69,7 +59,6 @@ public class SentOneMessege {
                     return;
                 }
                 String chatId = "-1002446322077";
-//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
 
@@ -84,7 +73,6 @@ public class SentOneMessege {
                     return;
                 }
                 String chatId = "-1002305962649";
-//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 0, messege);
                 tgBot.sendMessage(chatIds, 6, messege);
@@ -97,14 +85,12 @@ public class SentOneMessege {
         if (!sentArticlesCommunity.contains(article)) {
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
             String messege;
-//            String chatId = System.getenv("chat-id3");
             String chatId = "-1002397733938";
             if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
                 boolean bol = hasFeedbackPoints(article, seleniumCookies);
                 if (!bol) {
                     return;
                 }
-//                ByteArrayInputStream bytePhoto = photo(article);
                 messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent);
                 tgBot.sendMessage(chatId, 8, messege);
                 writer.write(article + "\n");
@@ -113,34 +99,6 @@ public class SentOneMessege {
                 Thread.sleep(500);
             }
         }
-        return;
-    }
-    public boolean checkFeedbackPoint(String url1) throws InterruptedException {
-        boolean hasFeedback = false;
-        FirefoxOptions firefoxOptions = new FirefoxOptions();
-        firefoxOptions.addArguments("--headless");
-        WebDriver webDriver = new FirefoxDriver(firefoxOptions);
-        WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
-        String href = "https://www.wildberries.ru/catalog/"+ url1 + "/detail.aspx";
-
-        try{
-            webDriver.get(href);
-            for(int i = 0;i<10; i++){
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.className("breadcrumbs__list")));
-                List<WebElement> checkItem = webDriver.findElements(By.cssSelector(".product-page__badges.product-page__badges--common.hide-mobile.product-page__badges--feedback-for-points"));
-                if(!checkItem.isEmpty()){
-                    hasFeedback = true;
-                    break;
-                }
-                webDriver.navigate().refresh();
-                Thread.sleep(2000);
-            }
-        }catch (Exception e){
-            hasFeedback = false;
-        }finally {
-            webDriver.quit();
-        }
-        return hasFeedback;
     }
 
     public static boolean hasFeedbackPoints(String url1, Set<org.openqa.selenium.Cookie> seleniumCookies) throws IOException, InterruptedException {
@@ -157,7 +115,6 @@ public class SentOneMessege {
         Connection.Response response = connection.execute();
 
         String json = response.body();
-        System.out.println(json);
 
         JsonReader jsonReader = new JsonReader(new StringReader(json));
         jsonReader.setLenient(true);

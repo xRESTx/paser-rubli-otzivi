@@ -16,8 +16,15 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
 
-import java.io.*;
-import java.util.*;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -106,25 +113,22 @@ public class MyDualBot extends TelegramLongPollingBot {
                 request = request.replyToMessageId(messageThreadId);
             }
             SendResponse response = pengradBot.execute(request);
-
-            if (response.isOk()) {
-                System.out.println("Message sent successfully");
-                sent = true;
-            } else {
-                System.out.println("Failed to send message: " + response.errorCode() + " - " + response.description());
-                int retryAfter = getRetryAfter(response);
-                if (retryAfter > 0) {
-                    System.out.println("Too Many Requests: retry after " + retryAfter + " seconds");
-                    try {
-                        Thread.sleep(retryAfter * 1000L);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
+//
+//            if (response.isOk()) {
+//                sent = true;
+//            } else {
+//                int retryAfter = getRetryAfter(response);
+//                if (retryAfter > 0) {
+//                    try {
+//                        Thread.sleep(retryAfter * 1000L);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                        break;
+//                    }
+//                } else {
+//                    break;
+//                }
+//            }
         }
     }
     private int getRetryAfter(SendResponse response) {
@@ -151,7 +155,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 executorService.submit(() -> {
                     String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2];
                     try {
-
                         int localizes = TestMessege.test2(seleniumCookies, url[1], url[2], jsonPage, sentArticles, sentArticlesCommunity, this, writerCommunity);
                         size.addAndGet(localizes);
                     } catch (InterruptedException | IOException e) {
@@ -165,7 +168,6 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println(size.get());
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))) {
             for (String item : sentArticlesCommunity) {
@@ -218,13 +220,10 @@ public class MyDualBot extends TelegramLongPollingBot {
             SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId);
             SendResponse response = pengradBot.execute(sendMessage);
             if (response.isOk()) {
-                System.out.println("Message sent successfully");
                 sent = true;
             } else {
-                System.out.println("Failed to send message: " + response.errorCode() + " - " + response.description());
                 int retryAfter = getRetryAfter(response);
                 if (retryAfter > 0) {
-                    System.out.println("Too Many Requests: retry after " + retryAfter + " seconds");
                     try {
                         Thread.sleep(retryAfter * 1000L);
                     } catch (InterruptedException e) {
