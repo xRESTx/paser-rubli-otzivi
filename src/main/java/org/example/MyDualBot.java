@@ -1,10 +1,16 @@
 package org.example;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.stream.JsonReader;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.SendMessage;
 import com.pengrad.telegrambot.response.SendResponse;
 
+import org.jsoup.Connection;
+import org.jsoup.Jsoup;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -17,11 +23,7 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
 
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -60,9 +62,9 @@ public class MyDualBot extends TelegramLongPollingBot {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if (messageText.equals("/start")) {
+            if (messageText.equals("/stort")) {
                 startTask(chatId);
-            } else if (messageText.equals("/stop")) {
+            } else if (messageText.equals("/stap")) {
                 stopTask(chatId);
             }
         }
@@ -113,24 +115,25 @@ public class MyDualBot extends TelegramLongPollingBot {
                 request = request.replyToMessageId(messageThreadId);
             }
             SendResponse response = pengradBot.execute(request);
-//
-//            if (response.isOk()) {
-//                sent = true;
-//            } else {
-//                int retryAfter = getRetryAfter(response);
-//                if (retryAfter > 0) {
-//                    try {
-//                        Thread.sleep(retryAfter * 1000L);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                        break;
-//                    }
-//                } else {
-//                    break;
-//                }
-//            }
+
+            if (response.isOk()) {
+                sent = true;
+            } else {
+                int retryAfter = getRetryAfter(response);
+                if (retryAfter > 0) {
+                    try {
+                        Thread.sleep(retryAfter * 1000L);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
         }
     }
+
     private int getRetryAfter(SendResponse response) {
         String description = response.description();
         if (description != null && description.contains("retry after")) {
@@ -148,15 +151,49 @@ public class MyDualBot extends TelegramLongPollingBot {
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
 
         ExecutorService executorService = Executors.newFixedThreadPool(200);
-        AtomicInteger size = new AtomicInteger();
+        List<String[]> urls = TestMessege.getURL(seleniumCookies);
+        for(String [] url : urls){
+            System.out.println(url[0] + url[1] + url[2]);
+        }
+
+        List<String> urlsPage = new ArrayList<>();
+        int is = 0;
+        for(String[] url : urls){
+            System.out.println(is);
+            is++;
+            Connection connectionPage = Jsoup.connect("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2])
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                    .method(Connection.Method.GET)
+                    .ignoreContentType(true);
+
+            for (Cookie cookie : seleniumCookies) {
+                connectionPage.cookie(cookie.getName(), cookie.getValue());
+            }
+            Connection.Response responsePage = connectionPage.execute();
+
+            String jsons = responsePage.body();
+            JsonReader jsonReaderPage = new JsonReader(new StringReader(jsons));
+            jsonReaderPage.setLenient(true);
+
+            JsonElement rootElementPage = JsonParser.parseReader(jsonReaderPage);
+            JsonObject rootObjectPage = rootElementPage.getAsJsonObject();
+            int totalPage = rootObjectPage.getAsJsonObject("data").get("total").getAsInt();
+            if(totalPage%100==0){
+                totalPage = totalPage /100;
+            }else{
+                totalPage = totalPage/ 100;
+                totalPage++;
+            }
+            for(int i = 1; i<=totalPage; i++) {
+                urlsPage.add("https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&" + "page=" + i + "&sort=popular&spp=30");
+            }
+        }
+        System.out.println(urlsPage.size());
         try (BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
-            List<String[]> urls = TestMessege.getURL(seleniumCookies);
-            for (String[] url : urls) {
+            for (String url : urlsPage) {
                 executorService.submit(() -> {
-                    String jsonPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2];
                     try {
-                        int localizes = TestMessege.test2(seleniumCookies, url[1], url[2], jsonPage, sentArticles, sentArticlesCommunity, this, writerCommunity);
-                        size.addAndGet(localizes);
+                        TestMessege.test2(seleniumCookies, url, sentArticles, sentArticlesCommunity, this, writerCommunity);
                     } catch (InterruptedException | IOException e) {
                         throw new RuntimeException(e);
                     }
