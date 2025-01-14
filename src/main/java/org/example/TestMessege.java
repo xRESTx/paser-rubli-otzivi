@@ -76,7 +76,6 @@ public class TestMessege {
     }
 
     public static void test2(Set<Cookie> seleniumCookies, String UrlPage, List<String> sentArticles, List<String> sentArticlesCommunity, MyDualBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
-
         SentOneMessege sentOneMessege = new SentOneMessege();
         Connection connection = Jsoup.connect(UrlPage)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
@@ -113,6 +112,8 @@ public class TestMessege {
                 }
             }
         }
-        Thread.sleep(1000);
+
+        Thread.sleep(900);
+
     }
 }

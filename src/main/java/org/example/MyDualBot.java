@@ -150,59 +150,69 @@ public class MyDualBot extends TelegramLongPollingBot {
         sentArticles = readSentArticles(FILE_PATH);
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(200);
+        ExecutorService executorService = Executors.newFixedThreadPool(100);
+        ExecutorService executorService1 = Executors.newFixedThreadPool(500);
         List<String[]> urls = TestMessege.getURL(seleniumCookies);
-
+        long startTime = System.currentTimeMillis();
         List<String> urlsPage = new ArrayList<>();
-        for(String[] url : urls){
-            Connection connectionPage = Jsoup.connect("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2])
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-                    .method(Connection.Method.GET)
-                    .ignoreContentType(true);
+        for (String[] url : urls) {
+            executorService.submit(() -> {
+                try {
+                    Connection connectionPage = Jsoup.connect("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&spp=30")
+                            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                            .method(Connection.Method.GET)
+                            .ignoreContentType(true);
 
-            System.out.println("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2]);
-            for (Cookie cookie : seleniumCookies) {
-                connectionPage.cookie(cookie.getName(), cookie.getValue());
-            }
-            Connection.Response responsePage = connectionPage.execute();
+                    for (Cookie cookie : seleniumCookies) {
+                        connectionPage.cookie(cookie.getName(), cookie.getValue());
+                    }
+                    Connection.Response responsePage = connectionPage.execute();
 
-            String jsons = responsePage.body();
-            JsonReader jsonReaderPage = new JsonReader(new StringReader(jsons));
-            jsonReaderPage.setLenient(true);
+                    String jsons = responsePage.body();
+                    JsonReader jsonReaderPage = new JsonReader(new StringReader(jsons));
+                    jsonReaderPage.setLenient(true);
 
-            JsonElement rootElementPage = JsonParser.parseReader(jsonReaderPage);
-            JsonObject rootObjectPage = rootElementPage.getAsJsonObject();
-            int totalPage = rootObjectPage.getAsJsonObject("data").get("total").getAsInt();
-            System.out.println("Kolvo " + totalPage);
-            if(totalPage%100==0){
-                totalPage = totalPage /100;
-            }else{
-                totalPage = totalPage/ 100;
-                totalPage++;
-            }
-            for(int i = 1; i<=totalPage; i++) {
-                urlsPage.add("https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&" + "page=" + i + "&sort=popular&spp=30");
-                System.out.println(urlsPage.getLast());
-            }
+                    JsonElement rootElementPage = JsonParser.parseReader(jsonReaderPage);
+                    JsonObject rootObjectPage = rootElementPage.getAsJsonObject();
+                    int totalPage = rootObjectPage.getAsJsonObject("data").get("total").getAsInt();
+                    if(totalPage%100==0){
+                        totalPage = totalPage /100;
+                    }else{
+                        totalPage = totalPage/ 100;
+                        totalPage++;
+                    }
+                    for(int i = 1; i<=totalPage; i++) {
+                        urlsPage.add("https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&" + "page=" + i + "&sort=popular&spp=30");
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
-        System.out.println("size: " + urlsPage.size());
+        executorService.shutdown();
+        while (!executorService.isTerminated()) {
+        }
+
+
         try (BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
             for (String url : urlsPage) {
-                executorService.submit(() -> {
+                executorService1.submit(() -> {
                     try {
-                        TestMessege.test2(seleniumCookies, url, sentArticles, sentArticlesCommunity, this, writerCommunity);
-                    } catch (InterruptedException | IOException e) {
+                         TestMessege.test2(seleniumCookies,url, sentArticles,sentArticlesCommunity,this,writerCommunity);
+                    } catch (IOException | InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 });
             }
-            executorService.shutdown();
-            while (!executorService.isTerminated()) {
+            executorService1.shutdown();
+            while (!executorService1.isTerminated()) {
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
+
+        System.out.println(urlsPage.size());
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))) {
             for (String item : sentArticlesCommunity) {
                 writer.write(item + "\n");
@@ -211,6 +221,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        long endTime = System.currentTimeMillis();
+        long timeElapsed = endTime - startTime;
+        System.out.println(timeElapsed);
     }
 
     private static List<String> readSentArticles(String FILE_PATH) {
