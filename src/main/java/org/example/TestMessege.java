@@ -67,15 +67,15 @@ public class TestMessege {
 
     public static String ensureUrlStartsWithPrefix(String url) {
         String prefixDigital = "https://www.wildberries.ru";
+        String prefixVmeste = "https://vmeste.wildberries.ru/";
 
-        if (url.startsWith(prefixDigital)) {
+        if (url.startsWith(prefixDigital) || url.startsWith(prefixVmeste)) {
             return url;
         }
         return prefixDigital + url + "";
     }
 
     public static void test2(Set<Cookie> seleniumCookies, String UrlPage, List<String> sentArticles, List<String> sentArticlesCommunity, MyDualBot tgBot, BufferedWriter writerArticle) throws InterruptedException, IOException {
-
 
         SentOneMessege sentOneMessege = new SentOneMessege();
         Connection connection = Jsoup.connect(UrlPage)

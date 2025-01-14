@@ -152,20 +152,15 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         ExecutorService executorService = Executors.newFixedThreadPool(200);
         List<String[]> urls = TestMessege.getURL(seleniumCookies);
-        for(String [] url : urls){
-            System.out.println(url[0] + url[1] + url[2]);
-        }
 
         List<String> urlsPage = new ArrayList<>();
-        int is = 0;
         for(String[] url : urls){
-            System.out.println(is);
-            is++;
             Connection connectionPage = Jsoup.connect("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2])
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                     .method(Connection.Method.GET)
                     .ignoreContentType(true);
 
+            System.out.println("https://catalog.wb.ru/catalog/" + url[1] + "/v6/filters?ab_testing=false&appType=1&" + url[2]);
             for (Cookie cookie : seleniumCookies) {
                 connectionPage.cookie(cookie.getName(), cookie.getValue());
             }
@@ -178,6 +173,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             JsonElement rootElementPage = JsonParser.parseReader(jsonReaderPage);
             JsonObject rootObjectPage = rootElementPage.getAsJsonObject();
             int totalPage = rootObjectPage.getAsJsonObject("data").get("total").getAsInt();
+            System.out.println("Kolvo " + totalPage);
             if(totalPage%100==0){
                 totalPage = totalPage /100;
             }else{
@@ -186,9 +182,10 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
             for(int i = 1; i<=totalPage; i++) {
                 urlsPage.add("https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&" + "page=" + i + "&sort=popular&spp=30");
+                System.out.println(urlsPage.getLast());
             }
         }
-        System.out.println(urlsPage.size());
+        System.out.println("size: " + urlsPage.size());
         try (BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
             for (String url : urlsPage) {
                 executorService.submit(() -> {
