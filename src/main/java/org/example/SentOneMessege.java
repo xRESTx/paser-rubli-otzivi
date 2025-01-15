@@ -7,7 +7,6 @@ import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.openqa.selenium.Cookie;
 
 import java.io.*;
 import java.net.HttpCookie;
@@ -18,7 +17,7 @@ public class SentOneMessege {
 
     public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA","elena novvv колье","Славянский Дворъ"));
 
-    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<HttpCookie> seleniumCookies) throws IOException, InterruptedException {
+    public void readTxtFile(List<String> sentArticles, MyDualBot tgBot, String itemName, String itemCost, String itemfFeedBackCost, String article, BufferedWriter writer, List<String> sentArticlesCommunity, Set<HttpCookie> Cookies) throws IOException, InterruptedException {
         if (!sentArticles.contains(article)) {
 
             String chatIds = "-1002340997107";
@@ -28,7 +27,7 @@ public class SentOneMessege {
             if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
                     || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
                     || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))) {
-                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                boolean bol = hasFeedbackPoints(article,Cookies);
                 if (!bol) {
                     return;
                 }
@@ -42,7 +41,7 @@ public class SentOneMessege {
                 Thread.sleep(500);
             }
             if (percent >= 1) {
-                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                boolean bol = hasFeedbackPoints(article,Cookies);
                 if (!bol) {
                     return;
                 }
@@ -55,7 +54,7 @@ public class SentOneMessege {
                 sentArticles.add(article);
                 Thread.sleep(500);
             } else if (percent >= 0.9 && percent < 1) {
-                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                boolean bol = hasFeedbackPoints(article,Cookies);
                 if (!bol) {
                     return;
                 }
@@ -69,7 +68,7 @@ public class SentOneMessege {
                 sentArticles.add(article);
                 Thread.sleep(500);
             } else if (percent >= 0.8 && percent < 0.9) {
-                boolean bol = hasFeedbackPoints(article,seleniumCookies);
+                boolean bol = hasFeedbackPoints(article,Cookies);
                 if (!bol) {
                     return;
                 }
@@ -88,7 +87,7 @@ public class SentOneMessege {
             String messege;
             String chatId = "-1002397733938";
             if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
-                boolean bol = hasFeedbackPoints(article, seleniumCookies);
+                boolean bol = hasFeedbackPoints(article, Cookies);
                 if (!bol) {
                     return;
                 }
@@ -102,14 +101,14 @@ public class SentOneMessege {
         }
     }
 
-    public static boolean hasFeedbackPoints(String url1, Set<HttpCookie> seleniumCookies) throws IOException, InterruptedException {
+    public static boolean hasFeedbackPoints(String url1, Set<HttpCookie> Cookies) throws IOException, InterruptedException {
         String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
         Connection connection = Jsoup.connect(jsonUrl)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
 
-        for (HttpCookie cookie : seleniumCookies) {
+        for (HttpCookie cookie : Cookies) {
             connection.cookie(cookie.getName(), cookie.getValue());
         }
         Connection.Response response = connection.execute();

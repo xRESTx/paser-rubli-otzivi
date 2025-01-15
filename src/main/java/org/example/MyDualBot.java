@@ -17,19 +17,20 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-import org.openqa.selenium.Cookie;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxOptions;
-
-
 import java.io.*;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.URI;
+import java.net.HttpCookie;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class MyDualBot extends TelegramLongPollingBot {
     private static final String FILE_PATH = "sent_articles.txt";
@@ -39,8 +40,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private final TelegramBot pengradBot;
     private Thread taskThread;
     private volatile boolean running = false;
-    private static Set<Cookie> seleniumCookies;
-
+    private static Set<HttpCookie> Cookies;
+    
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
     }
@@ -52,7 +53,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
+        return "botToken";
 //        return System.getenv("botToken");
     }
 
@@ -62,7 +63,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if (messageText.equals("/stort")) {
+            if (messageText.equals("/start")) {
                 startTask(chatId);
             } else if (messageText.equals("/stap")) {
                 stopTask(chatId);
@@ -80,7 +81,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         taskThread = new Thread(() -> {
             try {
                 while (running) {
-                    mainOld(seleniumCookies);
+                    mainOld(Cookies);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -146,13 +147,13 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         return 0;
     }
-    public void mainOld(Set<Cookie> seleniumCookies) throws InterruptedException, IOException {
+    public void mainOld(Set<HttpCookie> Cookies) throws InterruptedException, IOException {
         sentArticles = readSentArticles(FILE_PATH);
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
 
         ExecutorService executorService = Executors.newFixedThreadPool(100);
-        ExecutorService executorService1 = Executors.newFixedThreadPool(500);
-        List<String[]> urls = TestMessege.getURL(seleniumCookies);
+        ExecutorService executorService1 = Executors.newFixedThreadPool(400);
+        List<String[]> urls = TestMessege.getURL(Cookies);
         long startTime = System.currentTimeMillis();
         List<String> urlsPage = new ArrayList<>();
         for (String[] url : urls) {
@@ -163,7 +164,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                             .method(Connection.Method.GET)
                             .ignoreContentType(true);
 
-                    for (Cookie cookie : seleniumCookies) {
+                    for (HttpCookie cookie : Cookies) {
                         connectionPage.cookie(cookie.getName(), cookie.getValue());
                     }
                     Connection.Response responsePage = connectionPage.execute();
@@ -198,7 +199,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             for (String url : urlsPage) {
                 executorService1.submit(() -> {
                     try {
-                         TestMessege.test2(seleniumCookies,url, sentArticles,sentArticlesCommunity,this,writerCommunity);
+                         TestMessege.test2(Cookies,url, sentArticles,sentArticlesCommunity,this,writerCommunity);
                     } catch (IOException | InterruptedException e) {
                         throw new RuntimeException(e);
                     }
@@ -240,22 +241,45 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     public static void main(String[] args) throws InterruptedException {
+        // Установка CookieManager
+        CookieManager cookieManager = new CookieManager();
+        cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
 
-        FirefoxOptions options = new FirefoxOptions();
-        options.addArguments("--headless");
-
-        WebDriver driver = new FirefoxDriver(options);
+        // Создание HttpClient с поддержкой CookieManager
+        HttpClient client = HttpClient.newBuilder()
+                .cookieHandler(cookieManager)
+                .build();
 
         String urlWb = "https://www.wildberries.ru/";
 
-        driver.get(urlWb);
-        Thread.sleep(1000);
+        try {
+            // Отправка запроса к сайту Wildberries
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(urlWb))
+                    .GET()
+                    .build();
 
-        seleniumCookies = driver.manage().getCookies();
-        driver.quit();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            // Проверка успешности запроса
+            if (response.statusCode() == 200) {
+                System.out.println(response.statusCode());
+            } else {
+                System.out.println(response.statusCode());
+            }
+
+            // Извлечение cookies
+            Cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
+            Cookies.forEach(cookie -> System.out.println(cookie));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
+            botsApi.registerBot(new MyDualBot("botToken"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
