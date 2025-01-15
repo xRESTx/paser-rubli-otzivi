@@ -63,7 +63,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if (messageText.equals("/start")) {
+            if (messageText.equals("/q")) {
                 startTask(chatId);
             } else if (messageText.equals("/stap")) {
                 stopTask(chatId);
@@ -285,7 +285,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-    public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {// ByteArrayInputStream bytePhoto
+    public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {
         boolean sent = false;
         while (!sent) {
             SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId);

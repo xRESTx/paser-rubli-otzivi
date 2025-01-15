@@ -101,6 +101,7 @@ public class TestMessege {
             String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
             String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
             String articule = productObject.has("id") ? productObject.get("id").getAsString() : "0";
+            String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
             JsonArray sizesArray = productObject.getAsJsonArray("sizes");
             for (JsonElement sizeElement : sizesArray) {
                 if (!newInem.contains(articule)) {
@@ -108,7 +109,7 @@ public class TestMessege {
                     JsonObject sizeObject = sizeElement.getAsJsonObject();
                     int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
                     total = total/100;
-                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity, Cookies);
+                    sentOneMessege.readTxtFile(sentArticles, tgBot, itemName, String.valueOf(total), feedBackSum, articule,writerArticle, sentArticlesCommunity, Cookies, totalQuery);
                 }
             }
         }
