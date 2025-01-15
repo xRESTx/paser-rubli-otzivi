@@ -63,7 +63,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if (messageText.equals("/q")) {
+            if (messageText.equals("/start")) {
                 startTask(chatId);
             } else if (messageText.equals("/stap")) {
                 stopTask(chatId);
