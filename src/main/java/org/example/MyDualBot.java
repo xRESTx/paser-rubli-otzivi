@@ -1,5 +1,6 @@
 package org.example;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -25,23 +26,42 @@ import java.net.HttpCookie;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.text.DecimalFormat;
+import java.util.*;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.concurrent.*;
 
 public class MyDualBot extends TelegramLongPollingBot {
-    private static final String FILE_PATH = "sent_articles.txt";
+    private static final String FILE_PATH = "sent_articles";
     private static final String FILE_PATH_COMMUNITY = "sent_articles_community.txt";
-    private List<String> sentArticles = new ArrayList<>();
-    private List<String> sentArticlesCommunity = new ArrayList<>();
+
+    private Thread consumer100;
+    private Thread consumer90;
+    private Thread consumer80;
+    private Thread consumerBig;
+    private Thread consumerMyChat;
+
+    private static Set<String> sentArticles100 = ConcurrentHashMap.newKeySet();
+    private static Set<String> sentArticles90 = ConcurrentHashMap.newKeySet();
+    private static Set<String> sentArticles80 = ConcurrentHashMap.newKeySet();
+    private static Set<String> sentArticlesBig = ConcurrentHashMap.newKeySet();
+
+    private static Set<String> sentArticlesCommunity = ConcurrentHashMap.newKeySet();
+    private static final BlockingQueue<String> queue100 = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> queue90 = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> queue80 = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> queueBig = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> queueMyChat = new LinkedBlockingQueue<>();
+
+
     private final TelegramBot pengradBot;
     private Thread taskThread;
     private volatile boolean running = false;
     private static Set<HttpCookie> Cookies;
-    
+    public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA","elena novvv колье","Славянский Дворъ"));
+
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
     }
@@ -53,7 +73,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "botToken";
+        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
 //        return System.getenv("botToken");
     }
 
@@ -76,6 +96,61 @@ public class MyDualBot extends TelegramLongPollingBot {
             sendPengradMessage(String.valueOf(chatId), 0, "Task is already running.");
             return;
         }
+        sentArticles100 = readSentArticles(FILE_PATH + "100.txt");
+        sentArticles90 = readSentArticles(FILE_PATH + "90.txt");
+        sentArticles80 = readSentArticles(FILE_PATH + "90.txt");
+        sentArticlesBig = readSentArticles(FILE_PATH + "Big.txt");
+        sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
+
+        consumer100 = new Thread(() -> {
+            try {
+                sentMessege100();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        consumer100.setDaemon(true);
+        consumer100.start();
+
+        consumer90 = new Thread(() -> {
+            try {
+                sentMessege90();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        consumer90.setDaemon(true);
+        consumer90.start();
+
+        consumer80 = new Thread(() -> {
+            try {
+                sentMessege80();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        consumer80.setDaemon(true);
+        consumer80.start();
+
+        consumerBig = new Thread(() -> {
+            try {
+                sentMessegeBig();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        consumerBig.setDaemon(true);
+        consumerBig.start();
+
+        consumerMyChat = new Thread(() -> {
+            try {
+                sentMessegeMyChat();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        consumerMyChat.setDaemon(true);
+        consumerMyChat.start();
 
         running = true;
         taskThread = new Thread(() -> {
@@ -101,6 +176,11 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         running = false;
         try {
+            consumer100.join();
+            consumer90.join();
+            consumer80.join();
+            consumerBig.join();
+            consumerMyChat.join();
             taskThread.join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -148,12 +228,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         return 0;
     }
     public void mainOld(Set<HttpCookie> Cookies) throws InterruptedException, IOException {
-        sentArticles = readSentArticles(FILE_PATH);
-        sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
-
         ExecutorService executorService = Executors.newFixedThreadPool(100);
         ExecutorService executorService1 = Executors.newFixedThreadPool(400);
-        List<String[]> urls = TestMessege.getURL(Cookies);
+        List<String[]> urls = getURL(Cookies);
         long startTime = System.currentTimeMillis();
         List<String> urlsPage = new ArrayList<>();
         for (String[] url : urls) {
@@ -193,42 +270,26 @@ public class MyDualBot extends TelegramLongPollingBot {
         executorService.shutdown();
         while (!executorService.isTerminated()) {
         }
-
-
-        try (BufferedWriter writerCommunity = new BufferedWriter(new FileWriter(FILE_PATH, true))) {
-            for (String url : urlsPage) {
-                executorService1.submit(() -> {
-                    try {
-                         TestMessege.test2(Cookies,url, sentArticles,sentArticlesCommunity,this,writerCommunity);
-                    } catch (IOException | InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            }
-            executorService1.shutdown();
-            while (!executorService1.isTerminated()) {
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        for (String url : urlsPage) {
+            executorService1.submit(() -> {
+                try {
+                     test2(Cookies,url,sentArticlesCommunity,this);
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
-
-
+        executorService1.shutdown();
+        while (!executorService1.isTerminated()) {
+        }
         System.out.println(urlsPage.size());
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))) {
-            for (String item : sentArticlesCommunity) {
-                writer.write(item + "\n");
-                writer.flush();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
         long endTime = System.currentTimeMillis();
         long timeElapsed = endTime - startTime;
         System.out.println(timeElapsed);
     }
 
-    private static List<String> readSentArticles(String FILE_PATH) {
-        List<String> sentArticles = new ArrayList<>();
+    private static Set<String> readSentArticles(String FILE_PATH) {
+        Set<String> sentArticles = ConcurrentHashMap.newKeySet();
         try (BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -279,7 +340,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("botToken"));
+            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -303,6 +364,323 @@ public class MyDualBot extends TelegramLongPollingBot {
                     }
                 } else {
                     break;
+                }
+            }
+        }
+    }
+
+    public static void readTxtFile(String itemName, String itemCost, String itemfFeedBackCost, String article, Set<HttpCookie> Cookies, String totalQuery) throws IOException, InterruptedException {
+        if (!sentArticles100.contains(article) && !sentArticles90.contains(article) && !sentArticles80.contains(article) && !sentArticlesBig.contains(article)) {
+            String messege;
+
+            double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
+            if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
+                    || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
+                    || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))) {
+                boolean bol = hasFeedbackPoints(article,Cookies);
+                if (!bol) {
+                    return;
+                }
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queueBig.add(messege);
+            }
+            if (percent >= 1) {
+                boolean bol = hasFeedbackPoints(article,Cookies);
+                if (!bol) {
+                    return;
+                }
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queue100.add(messege);
+            } else if (percent >= 0.9 && percent < 1) {
+                boolean bol = hasFeedbackPoints(article,Cookies);
+                if (!bol) {
+                    return;
+                }
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queue90.add(messege);
+            } else if (percent >= 0.8 && percent < 0.9) {
+                boolean bol = hasFeedbackPoints(article,Cookies);
+                if (!bol) {
+                    return;
+                }
+
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queue80.add(messege);
+            }
+        }
+        if (!sentArticlesCommunity.contains(article)) {
+            double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
+            String messege;
+
+            if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
+                boolean bol = hasFeedbackPoints(article, Cookies);
+                if (!bol) {
+                    return;
+                }
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queueMyChat.add(messege);
+            }
+        }
+    }
+
+    private static void sentMessege100() throws InterruptedException {
+        String chatIds = "-1002340997107";
+        String chatId = "-1002402655346";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt"))){
+            while (true) {
+                String data = queue100.take(); // Извлечение данных из очереди
+                String[] parts = data.split(":", 2);
+                String article = parts[0];
+                String productInfo = parts[1];
+                if (sentArticles100.add(article)) { // Проверка уникальности
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                    tgBot.sendMessage(chatIds, 2, productInfo);
+                    writer.write(article + "\n");
+                    writer.flush();
+                }
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void sentMessege90() throws InterruptedException {
+        String chatIds = "-1002340997107";
+        String chatId = "-1002446322077";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt"))){
+            while (true) {
+                String data = queue90.take(); // Извлечение данных из очереди
+                String[] parts = data.split(":", 2);
+                String article = parts[0];
+                String productInfo = parts[1];
+                if (sentArticles90.add(article)) { // Проверка уникальности
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                    tgBot.sendMessage(chatIds, 4, productInfo);
+                    writer.write(article + "\n");
+                    writer.flush();
+                }
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void sentMessege80() throws InterruptedException {
+        String chatIds = "-1002340997107";
+        String chatId = "-1002305962649";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt"))){
+            while (true) {
+                System.out.println("Работаем");
+                String data = queue80.take(); // Извлечение данных из очереди
+                String[] parts = data.split(":", 2);
+                String article = parts[0];
+                String productInfo = parts[1];
+                if (sentArticles80.add(article)) { // Проверка уникальности
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                    tgBot.sendMessage(chatIds, 6, productInfo);
+                    writer.write(article + "\n");
+                    writer.flush();
+                }
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void sentMessegeBig() throws InterruptedException {
+        String chatIds = "-1002340997107";
+        String chatId = "-1002290311759";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt"))){
+            while (true) {
+
+                String data = queueBig.take(); // Извлечение данных из очереди
+                String[] parts = data.split(":", 2);
+                String article = parts[0];
+                String productInfo = parts[1];
+                if (sentArticlesBig.add(article)) { // Проверка уникальности
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                    tgBot.sendMessage(chatIds, 13, productInfo);
+                    writer.write(article + "\n");
+                    writer.flush();
+                }
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void sentMessegeMyChat() throws InterruptedException {
+        String chatIds = "-1002340997107";
+        String chatId = "-1002397733938";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))){
+            while (true) {
+
+                String data = queueMyChat.take(); // Извлечение данных из очереди
+                String[] parts = data.split(":", 2);
+                String article = parts[0];
+                String productInfo = parts[1];
+                if (sentArticlesCommunity.add(article)) { // Проверка уникальности
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                    tgBot.sendMessage(chatIds, 8, productInfo);
+                    writer.write(article + "\n");
+                    writer.flush();
+                }
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public static boolean hasFeedbackPoints(String url1, Set<HttpCookie> Cookies) throws IOException, InterruptedException {
+        String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
+        Connection connection = Jsoup.connect(jsonUrl)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                .method(Connection.Method.GET)
+                .ignoreContentType(true);
+
+        for (HttpCookie cookie : Cookies) {
+            connection.cookie(cookie.getName(), cookie.getValue());
+        }
+        Connection.Response response = connection.execute();
+
+        String json = response.body();
+
+        JsonReader jsonReader = new JsonReader(new StringReader(json));
+        jsonReader.setLenient(true);
+
+        JsonElement rootElement = JsonParser.parseReader(jsonReader);
+        JsonObject rootObject = rootElement.getAsJsonObject();
+
+        JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
+        boolean hasFeedbackPoint = false;
+        for (JsonElement productElement : productsArray) {
+            JsonObject productObject = productElement.getAsJsonObject();
+            if(productObject.has("supplier")){
+                String supplier = productObject.get("supplier").getAsString();
+                if(pidory.contains(supplier)){
+                    return false;
+                }
+            }
+            if (productObject.has("feedbackPoints")) {
+                String feedBackSum = productObject.get("feedbackPoints").getAsString();
+                if (!feedBackSum.equals("0")) {
+                    hasFeedbackPoint = true;
+                    break;
+                }
+            }
+        }
+        return hasFeedbackPoint;
+    }
+
+    static String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article, Double percent, String totalQuery){
+        String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
+        DecimalFormat df = new DecimalFormat("#.##");
+        String formattedString = article+ ":" + itemName + "\n\uD83D\uDCB8Price " + itemCost + "\u20BD\n" +
+                "\uD83C\uDFB0Cashback " + itemfFeedBackCost + "\u20BD\n" +
+                "\uD83D\uDCAFPercent " + df.format(percent * 100) + "%\n" +
+                "\uD83C\uDFB2Quantity " + totalQuery + "\n"+ href;
+        return formattedString;
+    }
+    public static List<String[]> getURL(Set<HttpCookie> Cookies) throws IOException {
+        Connection connection = Jsoup.connect("https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v3.json")
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                .method(Connection.Method.GET)
+                .ignoreContentType(true);
+
+        for (HttpCookie cookie : Cookies) {
+            connection.cookie(cookie.getName(), cookie.getValue());
+        }
+        Connection.Response response = connection.execute();
+
+        String json = response.body();
+        JsonReader jsonReader = new JsonReader(new StringReader(json));
+        jsonReader.setLenient(true);
+
+        JsonElement rootElement = JsonParser.parseReader(jsonReader);
+        JsonArray objectArray = rootElement.getAsJsonArray();
+        List<String[]> urls = new ArrayList<>();
+        for (JsonElement object : objectArray) {
+            JsonObject productObject = object.getAsJsonObject();
+            urls = processChildElements(productObject, urls);
+        }
+        return urls;
+    }
+
+    public static List<String[]> processChildElements(JsonObject jsonObject, List<String[]> urls) {
+        if (jsonObject.has("childs")) {
+            JsonArray childsArray = jsonObject.getAsJsonArray("childs");
+            for (JsonElement childElement : childsArray) {
+                JsonObject childObject = childElement.getAsJsonObject();
+                processChildElements(childObject, urls);
+            }
+        } else {
+            String obj = jsonObject.has("url") ? jsonObject.get("url").getAsString() : " ";
+            if (!obj.isEmpty() && !obj.startsWith("https://vmeste.wildberries.ru") && !obj.startsWith("https://travel.wildberries.ru") && !obj.startsWith("https://digital.wildberries.ru")) {
+                String shard = jsonObject.has("shard") && !jsonObject.get("shard").isJsonNull() ? jsonObject.get("shard").getAsString() : "";
+                if (Objects.equals(shard, "")) {
+                    return urls;
+                }
+                String query = jsonObject.has("query") && !jsonObject.get("query").isJsonNull() ? jsonObject.get("query").getAsString() : "";
+
+                obj += "?sort=popular&page=1&ffeedbackpoints=1";
+                obj = ensureUrlStartsWithPrefix(obj);
+                urls.add(new String[]{obj, shard, query});
+            }
+        }
+        return urls;
+    }
+
+    public static String ensureUrlStartsWithPrefix(String url) {
+        String prefixDigital = "https://www.wildberries.ru";
+        String prefixVmeste = "https://vmeste.wildberries.ru/";
+
+        if (url.startsWith(prefixDigital) || url.startsWith(prefixVmeste)) {
+            return url;
+        }
+        return prefixDigital + url + "";
+    }
+
+    public static void test2(Set<HttpCookie> Cookies, String UrlPage, Set<String> sentArticlesCommunity, MyDualBot tgBot) throws InterruptedException, IOException {
+        Connection connection = Jsoup.connect(UrlPage)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                .method(Connection.Method.GET)
+                .ignoreContentType(true);
+        for (HttpCookie cookie : Cookies) {
+            connection.cookie(cookie.getName(), cookie.getValue());
+        }
+        Connection.Response response = connection.execute();
+
+        String json = response.body();
+        JsonReader jsonReader = new JsonReader(new StringReader(json));
+        jsonReader.setLenient(true);
+
+        JsonElement rootElement = JsonParser.parseReader(jsonReader);
+        JsonObject rootObject = rootElement.getAsJsonObject();
+
+        JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
+        List<String> newInem = new ArrayList<>();
+        for (JsonElement productElement : productsArray) {
+            JsonObject productObject = productElement.getAsJsonObject();
+
+            String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
+            String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
+            String articule = productObject.has("id") ? productObject.get("id").getAsString() : "0";
+            String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
+            JsonArray sizesArray = productObject.getAsJsonArray("sizes");
+            for (JsonElement sizeElement : sizesArray) {
+                if (!newInem.contains(articule)) {
+                    newInem.add(articule);
+                    JsonObject sizeObject = sizeElement.getAsJsonObject();
+                    int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
+                    total = total/100;
+                    readTxtFile(itemName, String.valueOf(total), feedBackSum, articule, Cookies, totalQuery);
                 }
             }
         }
