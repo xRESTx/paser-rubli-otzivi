@@ -73,7 +73,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
+        return "BT";
 //        return System.getenv("botToken");
     }
 
@@ -101,6 +101,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         sentArticles80 = readSentArticles(FILE_PATH + "90.txt");
         sentArticlesBig = readSentArticles(FILE_PATH + "Big.txt");
         sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
+
 
         consumer100 = new Thread(() -> {
             try {
@@ -302,8 +303,11 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     public static void main(String[] args) throws InterruptedException {
+
         // Установка CookieManager
+
         CookieManager cookieManager = new CookieManager();
+
         cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
 
         // Создание HttpClient с поддержкой CookieManager
@@ -340,7 +344,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
+            botsApi.registerBot(new MyDualBot("BT"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -412,7 +416,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
             String messege;
 
-            if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
+            if (percent >= 1.1 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
                 boolean bol = hasFeedbackPoints(article, Cookies);
                 if (!bol) {
                     return;
@@ -426,8 +430,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege100() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002402655346";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt"))){
+        MyDualBot tgBot = new MyDualBot("BT");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt",true))){
             while (true) {
                 String data = queue100.take(); // Извлечение данных из очереди
                 String[] parts = data.split(":", 2);
@@ -448,8 +452,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege90() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002446322077";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt"))){
+        MyDualBot tgBot = new MyDualBot("BT");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt",true ))){
             while (true) {
                 String data = queue90.take(); // Извлечение данных из очереди
                 String[] parts = data.split(":", 2);
@@ -470,8 +474,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege80() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002305962649";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt"))){
+        MyDualBot tgBot = new MyDualBot("BT");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt",true ))){
             while (true) {
                 System.out.println("Работаем");
                 String data = queue80.take(); // Извлечение данных из очереди
@@ -493,8 +497,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessegeBig() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002290311759";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt"))){
+        MyDualBot tgBot = new MyDualBot("BT");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt",true ))){
             while (true) {
 
                 String data = queueBig.take(); // Извлечение данных из очереди
@@ -514,10 +518,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
     private static void sentMessegeMyChat() throws InterruptedException {
-        String chatIds = "-1002340997107";
         String chatId = "-1002397733938";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY))){
+        MyDualBot tgBot = new MyDualBot("BT");
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY, true))){
             while (true) {
 
                 String data = queueMyChat.take(); // Извлечение данных из очереди
@@ -526,8 +529,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 String productInfo = parts[1];
                 if (sentArticlesCommunity.add(article)) { // Проверка уникальности
 
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 8, productInfo);
+                    tgBot.sendMessage(chatId, 8, productInfo);
                     writer.write(article + "\n");
                     writer.flush();
                 }
