@@ -73,7 +73,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
+        return "BT";
 //        return System.getenv("botToken");
     }
 
@@ -351,6 +351,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
 
+
         // Создание HttpClient с поддержкой CookieManager
         HttpClient client = HttpClient.newBuilder()
                 .cookieHandler(cookieManager)
@@ -382,7 +383,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
+            botsApi.registerBot(new MyDualBot("BT"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -467,7 +468,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege100() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002402655346";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        MyDualBot tgBot = new MyDualBot("BT");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt",true))){
             while (running || !queue100.isEmpty()) {
                 String data = queue100.take(); // Извлечение данных из очереди
@@ -491,7 +492,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege90() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002446322077";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        MyDualBot tgBot = new MyDualBot("BT");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt",true ))){
             while (running || !queue90.isEmpty()) {
                 String data = queue90.take(); // Извлечение данных из очереди
@@ -515,7 +516,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege80() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002305962649";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        MyDualBot tgBot = new MyDualBot("BT");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt",true ))){
             while (running || !queue80.isEmpty()) {
                 String data = queue80.take(); // Извлечение данных из очереди
@@ -539,7 +540,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessegeBig() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002290311759";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        MyDualBot tgBot = new MyDualBot("BT");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt",true ))){
             while (running || !queueBig.isEmpty()) {
                 String data = queueBig.take(); // Извлечение данных из очереди
@@ -562,7 +563,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
     private static void sentMessegeMyChat() throws InterruptedException {
         String chatId = "-1002397733938";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        MyDualBot tgBot = new MyDualBot("BT");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY, true))){
             while (running || !queueMyChat.isEmpty()) {
                 String data = queueMyChat.take(); // Извлечение данных из очереди
