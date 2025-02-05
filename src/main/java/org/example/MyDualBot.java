@@ -15,12 +15,8 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-import javax.swing.text.Style;
 import java.io.*;
-import java.net.CookieManager;
-import java.net.CookiePolicy;
-import java.net.URI;
-import java.net.HttpCookie;
+import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -41,6 +37,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private Thread consumer80;
     private Thread consumerBig;
     private Thread consumerMyChat;
+    private Thread consumerError;
 
     private static Set<String> sentArticles100 = ConcurrentHashMap.newKeySet();
     private static Set<String> sentArticles90 = ConcurrentHashMap.newKeySet();
@@ -54,13 +51,17 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static final BlockingQueue<String> queueBig = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueMyChat = new LinkedBlockingQueue<>();
 
+    private static final BlockingQueue<String> queueError = new LinkedBlockingQueue<>();
+
     static List<String[]> urls = new ArrayList<>();
 
     private final TelegramBot pengradBot;
     private Thread taskThread;
     private static volatile boolean running = false;
     private static Set<HttpCookie> Cookies;
-    public static List<String> pidory = new ArrayList<>(Arrays.asList("elena novvv вечерние и свадебные украшения","FOVERE AROMA","elena novvv колье","Славянский Дворъ", "MEGA WATT"));
+    public static Set<String> pidory = ConcurrentHashMap.newKeySet();
+    private final Set<Long> waitingForMessage = new HashSet<>();
+    private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
 
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
@@ -82,37 +83,55 @@ public class MyDualBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().getText() != null) {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
-            if (messageText.equals("/stort")) {
-                startTask(chatId);
-            } else if (messageText.equals("/stop")) {
-                stopTask(chatId);
-            }else if(messageText.equals("/clean")){
-                try {
-                    clearTask(chatId);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+            if(admin.contains(String.valueOf(chatId))){
+                if (messageText.equals("/run")) {
+                    startTask(chatId);
+                } else if (messageText.equals("/stop")) {
+                    stopTask(chatId);
+                }else if(messageText.equals("/cleen")){
+                    try {
+                        clearTask(chatId);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                } else if(messageText.equals("/pirory")){
+                    waitingForMessage.add(chatId);
+                    sendPengradMessage(String.valueOf(chatId),  "Send pidora");
+                }else if (waitingForMessage.contains(chatId)) {
+                    try (BufferedWriter reader = new BufferedWriter(new FileWriter("pidory.txt", true))) {
+                        pidory.add(messageText);
+                        reader.write("\n" + messageText);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    sendPengradMessage(String.valueOf(chatId),  "The text is written to a file!");
+                    waitingForMessage.remove(chatId); // Убираем из режима ожидания
                 }
             }
         }
     }
     private void clearTask(long chatId) throws IOException {
-        sendPengradMessage(String.valueOf(chatId), 0, "Start cleaning");
-        stopTask(chatId);
+        sendPengradMessage(String.valueOf(chatId),  "Start cleaning");
+        if(running){
+            stopTask(chatId);
+        }
+
         hasPoint(sentArticles100, FILE_PATH + "100.txt");
         hasPoint(sentArticles90, FILE_PATH + "90.txt");
         hasPoint(sentArticles80, FILE_PATH + "80.txt");
         hasPoint(sentArticlesBig, FILE_PATH + "Big.txt");
         hasPoint(sentArticlesCommunity, FILE_PATH_COMMUNITY);
 
-        sendPengradMessage(String.valueOf(chatId), 0, "Cleaning is complete");
+        sendPengradMessage(String.valueOf(chatId),  "Cleaning is complete");
         startTask(chatId);
     }
     private void startTask(long chatId) {
         if (running) {
-            sendPengradMessage(String.valueOf(chatId), 0, "Task is already running.");
+            sendPengradMessage(String.valueOf(chatId),  "Task is already running.");
             return;
         }
-
+        queueError.clear();
+        pidory = readSentArticles("pidory.txt");
         sentArticles100 = readSentArticles(FILE_PATH + "100.txt");
         sentArticles90 = readSentArticles(FILE_PATH + "90.txt");
         sentArticles80 = readSentArticles(FILE_PATH + "80.txt");
@@ -124,7 +143,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 sentMessege100();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
         consumer100.setDaemon(true);
@@ -134,7 +153,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 sentMessege90();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
         consumer90.setDaemon(true);
@@ -144,7 +163,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 sentMessege80();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
         consumer80.setDaemon(true);
@@ -154,7 +173,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 sentMessegeBig();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
         consumerBig.setDaemon(true);
@@ -164,11 +183,21 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 sentMessegeMyChat();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
         consumerMyChat.setDaemon(true);
         consumerMyChat.start();
+
+        consumerError = new Thread(() -> {
+            try {
+                errorHandler();
+            } catch (InterruptedException | IOException e) {
+                e.printStackTrace();
+            }
+        });
+        consumerError.setDaemon(true);
+        consumerError.start();
 
         taskThread = new Thread(() -> {
             try {
@@ -182,15 +211,15 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         });
         taskThread.start();
-        sendPengradMessage(String.valueOf(chatId), 0, "Task started.");
+        sendPengradMessage(String.valueOf(chatId),  "Task started.");
     }
 
     private void stopTask(long chatId) {
         if (!running) {
-            sendPengradMessage(String.valueOf(chatId), 0, "Task is not running.");
+            sendPengradMessage(String.valueOf(chatId),  "Task is not running.");
             return;
         }
-        sendPengradMessage(String.valueOf(chatId), 0, "Wait pls");
+        sendPengradMessage(String.valueOf(chatId),  "Wait pls");
         running = false;
         try {
             taskThread.join();
@@ -203,20 +232,19 @@ public class MyDualBot extends TelegramLongPollingBot {
             queueBig.add("0:0");
             consumerBig.join();
             queueMyChat.add("0:0");
+            queueError.add("0");
+            consumerError.join();
             consumerMyChat.join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        sendPengradMessage(String.valueOf(chatId), 0, "Task stopped.");
+        sendPengradMessage(String.valueOf(chatId),  "Task stopped.");
     }
 
-    private void sendPengradMessage(String chatId, Integer messageThreadId, String messageText) {
+    private void sendPengradMessage(String chatId, String messageText) {
         boolean sent = false;
         while (!sent) {
             SendMessage request = new SendMessage(chatId, messageText).parseMode(ParseMode.Markdown);
-            if (messageThreadId != 0) {
-                request = request.replyToMessageId(messageThreadId);
-            }
             SendResponse response = pengradBot.execute(request);
 
             if (response.isOk()) {
@@ -250,9 +278,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         return 0;
     }
 
-    public static void mainOld() throws InterruptedException {
+    public static void mainOld() throws InterruptedException, ExecutionException {
         ExecutorService executorService = Executors.newFixedThreadPool(100);
-        ExecutorService executorService1 = Executors.newFixedThreadPool(400);
+        ExecutorService executorService1 = Executors.newFixedThreadPool(500);
         long startTime = System.currentTimeMillis();
 
         List<String> urlsPage = Collections.synchronizedList(new ArrayList<>());
@@ -295,11 +323,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         // Ждём завершения всех задач
         for (Future<?> future : futures) {
-            try {
-                future.get();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            }
+            future.get();
         }
 
         executorService.shutdown();
@@ -312,23 +336,17 @@ public class MyDualBot extends TelegramLongPollingBot {
                     test2(url);
                 } catch (IOException | InterruptedException e) {
                     i.getAndIncrement();
+                    queueError.add(url);
                 }
             }));
         }
 
         for (Future<?> future : futures) {
-            try {
-                future.get();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            }
+            future.get();
         }
-        System.out.println("ERROR: "+i);
         executorService1.shutdown();
-
-        System.out.println("Всего страниц: " + urlsPage.size());
         long endTime = System.currentTimeMillis();
-        System.out.println("Время выполнения: " + (endTime - startTime) + " мс");
+        System.out.println("E:" + queueError.size() + ",P:" + urlsPage.size() + ",T:" + (endTime - startTime));
     }
 
     private static Set<String> readSentArticles(String FILE_PATH) {
@@ -339,18 +357,17 @@ public class MyDualBot extends TelegramLongPollingBot {
                 sentArticles.add(line);
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
         return sentArticles;
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
 
         // Установка CookieManager
         CookieManager cookieManager = new CookieManager();
 
         cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
-
 
         // Создание HttpClient с поддержкой CookieManager
         HttpClient client = HttpClient.newBuilder()
@@ -373,9 +390,8 @@ public class MyDualBot extends TelegramLongPollingBot {
 
             // Извлечение cookies
             Cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
-            Cookies.forEach(cookie -> System.out.println(cookie));
+            Cookies.forEach(System.out::println);
             urls = getURL();
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -450,19 +466,19 @@ public class MyDualBot extends TelegramLongPollingBot {
 //                queue80.add(messege);
 //            }
 //        }
-//        if (!sentArticlesCommunity.contains(article)) {
-//            double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
-//            String messege;
-//
-//            if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
-//                boolean bol = hasFeedbackPoints(article);
-//                if (!bol) {
-//                    return;
-//                }
-//                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
-//                queueMyChat.add(messege);
-//            }
-//        }
+        if (!sentArticlesCommunity.contains(article)) {
+            double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
+            String messege;
+
+            if (percent >= 1.2 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
+                boolean bol = hasFeedbackPoints(article);
+                if (!bol) {
+                    return;
+                }
+                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+                queueMyChat.add(messege);
+            }
+        }
     }
 
     private static void sentMessege100() throws InterruptedException {
@@ -585,6 +601,27 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
 
+    private static void errorHandler() throws InterruptedException, IOException {
+        ExecutorService executorError = Executors.newFixedThreadPool(200);
+        for (int i = 0; i < 50; i++) {
+            executorError.submit(() -> {
+                while (running || !queueError.isEmpty()) {
+                    String exception = "";
+                    try {
+                        String data = queueError.take(); // Извлекаем данные из очереди
+                        if ("0".equals(data)) {
+                            queueError.add("0"); // Позволяет другим потокам тоже завершиться
+                            break; // Завершаем поток
+                        }
+                        exception = data;
+                        test2(data);
+                    } catch (Exception e) {
+                        queueError.add(exception);
+                    }
+                }
+            });
+        }
+    }
     public static boolean hasFeedbackPoints(String url1) throws IOException {
         String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
         Connection connection = Jsoup.connect(jsonUrl)
@@ -629,11 +666,11 @@ public class MyDualBot extends TelegramLongPollingBot {
     static String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article, Double percent, String totalQuery){
         String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
         DecimalFormat df = new DecimalFormat("#.##");
-        String formattedString = article+ ":" + itemName + "\n\uD83D\uDCB8Price " + itemCost + "\u20BD\n" +
+        return article+ ":" + itemName + "\n\uD83D\uDCB8Price " + itemCost + "\u20BD\n" +
                 "\uD83C\uDFB0Cashback " + itemfFeedBackCost + "\u20BD\n" +
                 "\uD83D\uDCAFPercent " + df.format(percent * 100) + "%\n" +
                 "\uD83C\uDFB2Quantity " + totalQuery + "\n"+ href;
-        return formattedString;
+
     }
 
     public static List<String[]> getURL() throws IOException {
@@ -656,7 +693,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         List<String[]> urls = new ArrayList<>();
         for (JsonElement object : objectArray) {
             JsonObject productObject = object.getAsJsonObject();
-            urls = processChildElements(productObject, urls);
+            processChildElements(productObject, urls);
         }
         return urls;
     }
@@ -695,61 +732,49 @@ public class MyDualBot extends TelegramLongPollingBot {
         return prefixDigital + url;
     }
 
-    public static void test2(String UrlPage) throws InterruptedException, IOException {
-        Connection connection = Jsoup.connect(UrlPage)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-                .method(Connection.Method.GET)
-                .ignoreContentType(true);
-        for (HttpCookie cookie : Cookies) {
-            connection.cookie(cookie.getName(), cookie.getValue());
-        }
-        Connection.Response response = connection.execute();
-
-        String json = response.body();
-        // Проверка на пустой JSON
-        if (json == null || json.isEmpty()) {
-            System.out.println("Ошибка: пустой JSON-ответ");
-            return;
-        }
-        if (!json.trim().endsWith("}")) {
-            System.out.println("Ошибка: JSON-ответ поврежден");
-            System.out.println(json); // Логирование ответа
-            return;
-        }
-
-        JsonObject rootObject;
+    private static void test2(String UrlPage) throws InterruptedException, IOException {
         try {
+            Connection connection = Jsoup.connect(UrlPage)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                    .method(Connection.Method.GET)
+                    .ignoreContentType(true);
+            for (HttpCookie cookie : Cookies) {
+                connection.cookie(cookie.getName(), cookie.getValue());
+            }
+            Connection.Response response = connection.execute();
+
+            String json = response.body();
             JsonReader jsonReader = new JsonReader(new StringReader(json));
             jsonReader.setLenient(true);
+
             JsonElement rootElement = JsonParser.parseReader(jsonReader);
-            rootObject = rootElement.getAsJsonObject();
-        } catch (JsonSyntaxException e) {
-            System.out.println("Ошибка парсинга JSON: " + e.getMessage());
-            return;
-        }
+            JsonObject rootObject = rootElement.getAsJsonObject();
 
-        JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
-        List<String> newInem = new ArrayList<>();
+            JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
+            List<String> newInem = new ArrayList<>();
+            for (JsonElement productElement : productsArray) {
+                JsonObject productObject = productElement.getAsJsonObject();
 
-        for (JsonElement productElement : productsArray) {
-            JsonObject productObject = productElement.getAsJsonObject();
-
-            String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
-            String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
-            String articule = productObject.has("id") ? productObject.get("id").getAsString() : "0";
-            String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
-            JsonArray sizesArray = productObject.getAsJsonArray("sizes");
-            for (JsonElement sizeElement : sizesArray) {
-                if (!newInem.contains(articule)) {
-                    newInem.add(articule);
-                    JsonObject sizeObject = sizeElement.getAsJsonObject();
-                    int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-                    total = total/100;
-                    readTxtFile(itemName, String.valueOf(total), feedBackSum, articule, totalQuery);
+                String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
+                String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
+                String articule = productObject.has("id") ? productObject.get("id").getAsString() : "0";
+                String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
+                JsonArray sizesArray = productObject.getAsJsonArray("sizes");
+                for (JsonElement sizeElement : sizesArray) {
+                    if (!newInem.contains(articule)) {
+                        newInem.add(articule);
+                        JsonObject sizeObject = sizeElement.getAsJsonObject();
+                        int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
+                        total = total/100;
+                        readTxtFile(itemName, String.valueOf(total), feedBackSum, articule, totalQuery);
+                    }
                 }
             }
+        }catch (Exception e){
+            queueError.add(UrlPage);
         }
     }
+
 
     private static Set<String> hasPoint(Set<String> articles,String fileName) throws IOException {
         ExecutorService executorService = Executors.newFixedThreadPool(100);
@@ -760,7 +785,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     articles.add(line);
                 }
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         }
         for (String article: articles) {
@@ -769,7 +794,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 try {
                     checkArticle = hasFeedbackPoints(article);
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    e.printStackTrace();
                 }
                 if(!checkArticle){
                     articles.remove(article);
@@ -777,8 +802,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             });
         }
         executorService.shutdown();
-        while (!executorService.isTerminated()) {
-        }
+        while (!executorService.isTerminated());
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(fileName))) {
             for(String article : articles){
                 writer.write(article+"\n");
