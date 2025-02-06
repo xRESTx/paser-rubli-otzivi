@@ -27,6 +27,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MyDualBot extends TelegramLongPollingBot {
     private static final String FILE_PATH = "sent_articles";
@@ -38,6 +40,9 @@ public class MyDualBot extends TelegramLongPollingBot {
     private Thread consumerBig;
     private Thread consumerMyChat;
     private Thread consumerError;
+    private Thread consumerStrippingLazar;
+    private Thread consumerStrippingLazarSent;
+
 
     private static Set<String> sentArticles100 = ConcurrentHashMap.newKeySet();
     private static Set<String> sentArticles90 = ConcurrentHashMap.newKeySet();
@@ -50,6 +55,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static final BlockingQueue<String> queue80 = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueBig = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueMyChat = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> queueStrippingLazar = new LinkedBlockingQueue<>();
 
     private static final BlockingQueue<String> queueError = new LinkedBlockingQueue<>();
 
@@ -63,6 +69,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private final Set<Long> waitingForMessage = new HashSet<>();
     private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
 
+    static Map<String, Long> mapOnSent = new HashMap<>();
+
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
     }
@@ -74,7 +82,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "BT";
+        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
 //        return System.getenv("botToken");
     }
 
@@ -199,6 +207,27 @@ public class MyDualBot extends TelegramLongPollingBot {
         consumerError.setDaemon(true);
         consumerError.start();
 
+        consumerStrippingLazar = new Thread(() -> {
+            try {
+                strippingLazar();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        consumerStrippingLazar.setDaemon(true);
+        consumerStrippingLazar.start();
+
+
+        consumerStrippingLazarSent = new Thread(() -> {
+            try {
+                sentStrippingLazarSent();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        consumerStrippingLazarSent.setDaemon(true);
+        consumerStrippingLazarSent.start();
+
         taskThread = new Thread(() -> {
             try {
                 while (running) {
@@ -234,6 +263,8 @@ public class MyDualBot extends TelegramLongPollingBot {
             queueMyChat.add("0:0");
             queueError.add("0");
             consumerError.join();
+            queueStrippingLazar.add("0");
+            consumerStrippingLazarSent.join();
             consumerMyChat.join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -399,7 +430,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("BT"));
+            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -436,41 +467,45 @@ public class MyDualBot extends TelegramLongPollingBot {
 //            if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
 //                    || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
 //                    || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))) {
-//                boolean bol = hasFeedbackPoints(article,Cookies);
+//                boolean bol = hasFeedbackPoints(article);
 //                if (!bol) {
 //                    return;
 //                }
 //                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
 //                queueBig.add(messege);
+//                mapOnSent.put(article, System.currentTimeMillis());
 //            }
 //            if (percent >= 1) {
-//                boolean bol = hasFeedbackPoints(article,Cookies);
+//                boolean bol = hasFeedbackPoints(article);
 //                if (!bol) {
 //                    return;
 //                }
 //                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
 //                queue100.add(messege);
+//                mapOnSent.put(article, System.currentTimeMillis());
 //            } else if (percent >= 0.9 && percent < 1) {
-//                boolean bol = hasFeedbackPoints(article,Cookies);
+//                boolean bol = hasFeedbackPoints(article);
 //                if (!bol) {
 //                    return;
 //                }
 //                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
 //                queue90.add(messege);
+//                mapOnSent.put(article, System.currentTimeMillis());
 //            } else if (percent >= 0.8 && percent < 0.9) {
-//                boolean bol = hasFeedbackPoints(article,Cookies);
+//                boolean bol = hasFeedbackPoints(article);
 //                if (!bol) {
 //                    return;
 //                }
 //                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
 //                queue80.add(messege);
+//                mapOnSent.put(article, System.currentTimeMillis());
 //            }
 //        }
         if (!sentArticlesCommunity.contains(article)) {
             double percent = Double.parseDouble(itemfFeedBackCost) / Integer.parseInt(itemCost);
             String messege;
 
-            if (percent >= 1.2 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
+            if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
                 boolean bol = hasFeedbackPoints(article);
                 if (!bol) {
                     return;
@@ -484,7 +519,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege100() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002402655346";
-        MyDualBot tgBot = new MyDualBot("BT");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt",true))){
             while (running || !queue100.isEmpty()) {
                 String data = queue100.take(); // Извлечение данных из очереди
@@ -508,7 +543,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege90() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002446322077";
-        MyDualBot tgBot = new MyDualBot("BT");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt",true ))){
             while (running || !queue90.isEmpty()) {
                 String data = queue90.take(); // Извлечение данных из очереди
@@ -532,7 +567,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessege80() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002305962649";
-        MyDualBot tgBot = new MyDualBot("BT");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt",true ))){
             while (running || !queue80.isEmpty()) {
                 String data = queue80.take(); // Извлечение данных из очереди
@@ -556,7 +591,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static void sentMessegeBig() throws InterruptedException {
         String chatIds = "-1002340997107";
         String chatId = "-1002290311759";
-        MyDualBot tgBot = new MyDualBot("BT");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt",true ))){
             while (running || !queueBig.isEmpty()) {
                 String data = queueBig.take(); // Извлечение данных из очереди
@@ -579,7 +614,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
     private static void sentMessegeMyChat() throws InterruptedException {
         String chatId = "-1002397733938";
-        MyDualBot tgBot = new MyDualBot("BT");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY, true))){
             while (running || !queueMyChat.isEmpty()) {
                 String data = queueMyChat.take(); // Извлечение данных из очереди
@@ -600,10 +635,39 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
+    private static void sentStrippingLazarSent() throws InterruptedException {
+        String chatId = "-1002239949862";
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        try{
+            while (running || !queueStrippingLazar.isEmpty()) {
+                String article = queueStrippingLazar.take(); // Извлечение данных из очереди
+                if(Objects.equals(article, "0")){
+                    continue;
+                }
+                List<String> sent = repeatCheck(article);
+                if(sent.isEmpty()){
+                    continue;
+                }
+                double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
+                if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
+                        || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
+                        || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
+                    String data = createMessege(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
+                    String[] parts = data.split(":", 2);
+                    String productInfo = parts[1];
+
+                    tgBot.sendMessage(chatId, 0, productInfo);
+                }
+
+            }
+        }catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     private static void errorHandler() throws InterruptedException, IOException {
         ExecutorService executorError = Executors.newFixedThreadPool(200);
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 200; i++) {
             executorError.submit(() -> {
                 while (running || !queueError.isEmpty()) {
                     String exception = "";
@@ -622,6 +686,23 @@ public class MyDualBot extends TelegramLongPollingBot {
             });
         }
     }
+
+    private static void strippingLazar() throws InterruptedException { // обработка ключ значений
+        while (running) {
+            Iterator<Map.Entry<String, Long>> iterator = mapOnSent.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Long> map = iterator.next();
+                String article = map.getKey();
+                long time = System.currentTimeMillis() - map.getValue();
+                if(time > 1000*60*2){
+                    queueStrippingLazar.add(article);
+                    iterator.remove();
+                }
+            }
+            Thread.sleep(5000);
+        }
+    }
+
     public static boolean hasFeedbackPoints(String url1) throws IOException {
         String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
         Connection connection = Jsoup.connect(jsonUrl)
@@ -670,7 +751,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 "\uD83C\uDFB0Cashback " + itemfFeedBackCost + "\u20BD\n" +
                 "\uD83D\uDCAFPercent " + df.format(percent * 100) + "%\n" +
                 "\uD83C\uDFB2Quantity " + totalQuery + "\n"+ href;
-
     }
 
     public static List<String[]> getURL() throws IOException {
@@ -731,7 +811,54 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         return prefixDigital + url;
     }
+    private static List<String> repeatCheck(String articule){
+        List<String> sent = new ArrayList<>();
+        try {
+            String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ articule;
+            Connection connection = Jsoup.connect(jsonUrl)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                    .method(Connection.Method.GET)
+                    .ignoreContentType(true);
 
+            for (HttpCookie cookie : Cookies) {
+                connection.cookie(cookie.getName(), cookie.getValue());
+            }
+            Connection.Response response = connection.execute();
+
+            String json = response.body();
+
+            JsonReader jsonReader = new JsonReader(new StringReader(json));
+            jsonReader.setLenient(true);
+
+            JsonElement rootElement = JsonParser.parseReader(jsonReader);
+            JsonObject rootObject = rootElement.getAsJsonObject();
+
+            JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
+
+            for (JsonElement productElement : productsArray) {
+                JsonObject productObject = productElement.getAsJsonObject();
+                if (productObject.has("feedbackPoints")) {
+                    String feedBackSum = productObject.get("feedbackPoints").getAsString();
+                    String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
+                    String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
+                    JsonArray sizesArray = productObject.getAsJsonArray("sizes");
+                    for (JsonElement sizeElement : sizesArray) {
+                        JsonObject sizeObject = sizeElement.getAsJsonObject();
+                        int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
+                        total = total/100;
+                        sent.add(itemName);
+                        sent.add(String.valueOf(total));
+                        sent.add(feedBackSum);
+                        sent.add(totalQuery);
+                        return sent;
+                    }
+                }
+            }
+        }catch (Exception e){
+            queueError.add(articule);
+        }
+        return sent;
+    }
     private static void test2(String UrlPage) throws InterruptedException, IOException {
         try {
             Connection connection = Jsoup.connect(UrlPage)
