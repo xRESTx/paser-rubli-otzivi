@@ -46,6 +46,13 @@ public class MyDualBot extends TelegramLongPollingBot {
     private Thread consumerFreeSent;
     private Thread consumerFood;
 
+//    private static ConcurrentHashMap<String, Double> sentArticles100 = new ConcurrentHashMap<>();
+//    private static ConcurrentHashMap<String, Double> sentArticles90 = new ConcurrentHashMap<>();
+//    private static ConcurrentHashMap<String, Double> sentArticles80 = new ConcurrentHashMap<>();
+//    private static ConcurrentHashMap<String, Double> sentArticlesBig = new ConcurrentHashMap<>();
+//    private static ConcurrentHashMap<String, Double> sentArticlesCommunity = new ConcurrentHashMap<>();
+//    private static ConcurrentHashMap<String, Double> sentArticlesFood = new ConcurrentHashMap<>();
+
     private static Set<String> sentArticles100 = ConcurrentHashMap.newKeySet();
     private static Set<String> sentArticles90 = ConcurrentHashMap.newKeySet();
     private static Set<String> sentArticles80 = ConcurrentHashMap.newKeySet();
@@ -505,7 +512,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {
         boolean sent = false;
         while (!sent) {
-            SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId);
+            SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId).parseMode(ParseMode.HTML);
             SendResponse response = pengradBot.execute(sendMessage);
             if (response.isOk()) {
                 sent = true;
@@ -763,7 +770,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
                     String data = createMessege(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
                     String[] parts = data.split(":", 2);
-                    String productInfo = parts[1];
+                    String productInfo = parts[1] + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     mapOnSentFree.put(article,System.currentTimeMillis());
                     tgBot.sendMessage(chatId, 0, productInfo);
                 }
@@ -794,7 +801,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
                     String data = createMessege(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
                     String[] parts = data.split(":", 2);
-                    String productInfo = parts[1];
+                    String productInfo = parts[1] + "\n\n <a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     tgBot.sendMessage(chatId, 0, productInfo);
                 }
             }
@@ -837,7 +844,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 Map.Entry<String, Long> map = iterator.next();
                 String article = map.getKey();
                 long time = System.currentTimeMillis() - map.getValue();
-                if(time > (1000*60*2 + 1000*55)){
+                if(time > (1000*60*2 + 1000*30)){
                     queueStrippingLazar.add(article);
                     iterator.remove();
                 }
@@ -858,7 +865,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     iterator.remove();
                 }
             }
-            Thread.sleep(60*1000);
+            Thread.sleep(30*1000);
         }
     }
 
