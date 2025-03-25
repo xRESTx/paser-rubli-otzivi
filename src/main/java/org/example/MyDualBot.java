@@ -639,11 +639,12 @@ public class MyDualBot extends TelegramLongPollingBot {
                 || (sentArticlesBig.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesBig.get(article)) - (percent))> 0.05))
         ) {
             String messege;
+
             if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
                     || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
                     || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))) {
-                double bol = hasFeedbackPoints(article);
 
+                double bol = hasFeedbackPoints(article);
                 if (bol == 0) {
                     return;
                 }
@@ -1039,9 +1040,11 @@ public class MyDualBot extends TelegramLongPollingBot {
                 double total = 1;
                 for (JsonElement sizeElement : sizesArray) {
                     JsonObject sizeObject = sizeElement.getAsJsonObject();
-                    total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-                    total = total/100;
-                    break;
+                    if(sizeObject.has("price")){
+                        total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
+                        total = total/100;
+                        break;
+                    }
                 }
                 String feedBackSum = productObject.get("feedbackPoints").getAsString();
                 hasFeedbackPoint = Double.parseDouble(feedBackSum) / total;
