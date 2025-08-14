@@ -2,11 +2,18 @@ package org.example;
 
 import com.google.gson.*;
 import com.google.gson.stream.JsonReader;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.SendMessage;
 import com.pengrad.telegrambot.response.SendResponse;
 
+import org.example.jsonmodel.Product;
+import org.example.jsonmodel.Root;
+import org.example.jsonmodel.UrlFetcher;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -20,7 +27,10 @@ import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.DecimalFormat;
+
 import java.util.*;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -31,35 +41,42 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
+import static java.nio.file.StandardOpenOption.*;
+
 public class MyDualBot extends TelegramLongPollingBot {
     private static final String FILE_PATH = "sent_articles";
     private static final String FILE_PATH_COMMUNITY = "sent_articles_community.txt";
 
-    private Thread consumer100;
-    private Thread consumer90;
-    private Thread consumer80;
-    private Thread consumerBig;
-    private Thread consumerMyChat;
-//    private Thread consumerError;
-    private Thread consumerStrippingLazar;
-    private Thread consumerStrippingLazarSent;
-    private Thread consumerFree;
-    private Thread consumerFreeSent;
-    private Thread consumerFood;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MyDualBot.class);
 
-    private static ConcurrentHashMap<String, String> sentArticles100 = new ConcurrentHashMap<>();
-    private static ConcurrentHashMap<String, String> sentArticles90 = new ConcurrentHashMap<>();
-    private static ConcurrentHashMap<String, String> sentArticles80 = new ConcurrentHashMap<>();
-    private static ConcurrentHashMap<String, String> sentArticlesBig = new ConcurrentHashMap<>();
-    private static ConcurrentHashMap<String, String> sentArticlesCommunity = new ConcurrentHashMap<>();
-    private static ConcurrentHashMap<String, String> sentArticlesFood = new ConcurrentHashMap<>();
+        // один пул на весь бот
+    private static final ScheduledExecutorService SCHEDULER =
+            Executors.newScheduledThreadPool(
+                    20,
+                    new ThreadFactory() {
+                        private final AtomicInteger idx = new AtomicInteger();
+                        @Override
+                        public Thread newThread(Runnable r) {
+                            Thread t = new Thread(r, "wb-sched-" + idx.incrementAndGet());
+                            t.setDaemon(true);
+                            t.setUncaughtExceptionHandler(
+                                    (th, ex) -> log.error("Thread {} died", th.getName(), ex));
+                            return t;
+                        }
+                    });
 
-//    private static Set<String> sentArticles100 = ConcurrentHashMap.newKeySet();
-//    private static Set<String> sentArticles90 = ConcurrentHashMap.newKeySet();
-//    private static Set<String> sentArticles80 = ConcurrentHashMap.newKeySet();
-//    private static Set<String> sentArticlesBig = ConcurrentHashMap.newKeySet();
-//    private static Set<String> sentArticlesCommunity = ConcurrentHashMap.newKeySet();
-//    private static Set<String> sentArticlesFood = ConcurrentHashMap.newKeySet();
+    private static final Cache<String, Double> sentArticles100 =
+            Caffeine.newBuilder().maximumSize(200_000).build();
+    private static final Cache<String, Double> sentArticles90 =
+            Caffeine.newBuilder().maximumSize(200_000).build();
+    private static final Cache<String, Double> sentArticles80 =
+            Caffeine.newBuilder().maximumSize(200_000).build();
+    private static final Cache<String, Double> sentArticlesBig =
+            Caffeine.newBuilder().maximumSize(200_000).build();
+    private static final Cache<String, Double> sentArticlesCommunity =
+            Caffeine.newBuilder().maximumSize(200_000).build();
+    private static final Cache<String, Double> sentArticlesFood =
+            Caffeine.newBuilder().maximumSize(200_000).build();
 
     private static final BlockingQueue<String> queue100 = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queue90 = new LinkedBlockingQueue<>();
@@ -70,14 +87,12 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static final BlockingQueue<ProductInfo> queueStrippingLazar = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueFree = new LinkedBlockingQueue<>();
 
-//    private static final BlockingQueue<String> queueError = new LinkedBlockingQueue<>();
 
     static List<String[]> urls = new ArrayList<>();
     private static Set<String> urlsFood = ConcurrentHashMap.newKeySet();
 
     private final TelegramBot pengradBot;
-    private Thread taskThreadV1;
-    private Thread taskThreadV2;
+
     private static volatile boolean running = false;
     private static Set<HttpCookie> Cookies;
     public static Set<String> pidory = ConcurrentHashMap.newKeySet();
@@ -90,7 +105,6 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     static int[] numberPagesProcessed = new int[2];
 
-//    private static Map<String, Integer> check = new HashMap<>();
     private static int delta = 0;
     public MyDualBot(String pengradBotToken) {
         this.pengradBot = new TelegramBot(pengradBotToken);
@@ -155,7 +169,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         try {
             readTxtFile(sent.get(0), sent.get(1), sent.get(2), messageText, sent.get(3),"");
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
         }
         sendPengradMessage(String.valueOf(chatId),  "Сообщение отправлено ");
@@ -177,207 +191,202 @@ public class MyDualBot extends TelegramLongPollingBot {
         sendPengradMessage(String.valueOf(chatId),  "Cleaning is complete");
         startTask(chatId);
     }
-    
+
+    private final List<Future<?>> tasks = new ArrayList<>();
+
     private void startTask(long chatId) {
         if (running) {
-            sendPengradMessage(String.valueOf(chatId),  "Task is already running.");
+            sendPengradMessage(String.valueOf(chatId), "Task is already running.");
             return;
         }
-//        queueError.clear();
+        sendPengradMessage(String.valueOf(chatId), "Start task.");
         pidory = readPidora("pidory.txt");
-        sentArticles100 = readSentArticles(FILE_PATH + "100.txt");
-        sentArticles90 = readSentArticles(FILE_PATH + "90.txt");
-        sentArticles80 = readSentArticles(FILE_PATH + "80.txt");
-        sentArticlesBig = readSentArticles(FILE_PATH + "Big.txt");
-        sentArticlesFood = readSentArticles(FILE_PATH + "Food.txt");
-        sentArticlesCommunity = readSentArticles(FILE_PATH_COMMUNITY);
+        readSentArticlesToCache(FILE_PATH + "100.txt", sentArticles100);
+        readSentArticlesToCache(FILE_PATH + "90.txt", sentArticles90);
+        readSentArticlesToCache(FILE_PATH + "80.txt", sentArticles80);
+        readSentArticlesToCache(FILE_PATH + "Big.txt", sentArticlesBig);
+        readSentArticlesToCache(FILE_PATH + "Food.txt", sentArticlesFood);
+        readSentArticlesToCache(FILE_PATH_COMMUNITY, sentArticlesCommunity);
 
         running = true;
-        consumer100 = new Thread(() -> {
-            try {
-                sentMessege100();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumer100.setDaemon(true);
-        consumer100.start();
 
-        consumer90 = new Thread(() -> {
+        // 100
+        tasks.add(SCHEDULER.submit(() ->
+        {
             try {
-                sentMessege90();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumer90.setDaemon(true);
-        consumer90.start();
-
-        consumer80 = new Thread(() -> {
-            try {
-                sentMessege80();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumer80.setDaemon(true);
-        consumer80.start();
-
-        consumerBig = new Thread(() -> {
-            try {
-                sentMessegeBig();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerBig.setDaemon(true);
-        consumerBig.start();
-
-        consumerMyChat = new Thread(() -> {
-            try {
-                sentMessegeMyChat();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerMyChat.setDaemon(true);
-        consumerMyChat.start();
-
-//        consumerError = new Thread(() -> {
-//            try {
-//                errorHandler();
-//            } catch (InterruptedException | IOException e) {
-//                e.printStackTrace();
-//            }
-//        });
-//        consumerError.setDaemon(true);
-//        consumerError.start();
-
-        consumerStrippingLazar = new Thread(() -> {
-            try {
-                strippingLazar();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerStrippingLazar.setDaemon(true);
-        consumerStrippingLazar.start();
-
-        consumerFree = new Thread(() -> {
-            try {
-                Free();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerFree.setDaemon(true);
-        consumerFree.start();
-
-        consumerFreeSent = new Thread(() -> {
-            try {
-                sentFree();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerFreeSent.setDaemon(true);
-        consumerFreeSent.start();
-
-        consumerFood = new Thread(() -> {
-            try {
-                sentMessegeFood();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerFood.setDaemon(true);
-        consumerFood.start();
-
-        consumerStrippingLazarSent = new Thread(() -> {
-            try {
-                sentStrippingLazarSent();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        consumerStrippingLazarSent.setDaemon(true);
-        consumerStrippingLazarSent.start();
-
-        taskThreadV1 = new Thread(() -> {
-            try {
-                boolean reverse= true;
-                while (running) {
-                    mainOld(true, reverse);
-                    reverse = !reverse;
-                }
+                runSender("100.txt", queue100, sentArticles100,"-1002340997107", 2,
+                        "-1002402655346");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                e.printStackTrace();
+                log.warn("Sender 100 interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender 100", t);
             }
-        });
-        taskThreadV1.start();
-        taskThreadV2 = new Thread(() -> {
+        }));
+
+        // 90
+        tasks.add(SCHEDULER.submit(() ->
+        {
             try {
-                Thread.sleep(2500);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            try {
-                boolean reverse = true;
-                while (running) {
-                    mainOld(false, reverse);
-                    reverse = !reverse;
-                }
+                runSender("90.txt", queue90, sentArticles90, "-1002340997107", 4,"-1002446322077");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                e.printStackTrace();
+                log.warn("Sender 90 interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender 90", t);
             }
-        });
-        taskThreadV2.start();
+        }));
 
-        sendPengradMessage(String.valueOf(chatId),  "Task started.");
+        tasks.add(SCHEDULER.submit(() ->
+        {
+            try {
+                runSender("80.txt", queue80, sentArticles80, "-1002340997107", 6,"-1002305962649");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Sender 80 interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender 80", t);
+            }
+        }));
+
+
+        // Big
+        tasks.add(SCHEDULER.submit(() ->
+        {
+            try {
+                runSender("Big.txt", queueBig, sentArticlesBig, "-1002340997107", 13,"-1002290311759");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Sender Big interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender Big", t);
+            }
+        }));
+
+        // Food
+        tasks.add(SCHEDULER.submit(() ->
+        {
+            try {
+                runSender("Food.txt", queueFood, sentArticlesFood, "-1002340997107", 89330,"-1002474423617");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Sender Food interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender Food", t);
+            }
+        }));
+
+        // Community
+        tasks.add(SCHEDULER.submit(() ->
+        {
+            try {
+                runSender("_community.txt", queueMyChat, sentArticlesCommunity, "-1002397733938", 8,null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Sender Community interrupted", e);
+            } catch (Throwable t) {
+                log.error("Error in sender Community", t);
+            }
+        }));
+
+        // StrippingLazarSent
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        MyDualBot.sentStrippingLazarSent();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        log.warn("Consumer StrippingLazarSent was interrupted, exiting", e);
+                    } catch (Throwable t) {
+                        log.error("Error in consumer StrippingLazarSent", t);
+                    }
+                },
+                0, 500, TimeUnit.SECONDS));
+
+        // Free
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        MyDualBot.sentFree();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        log.warn("Consumer Free was interrupted, exiting", e);
+                    } catch (Throwable t) {
+                        log.error("Error in consumer Free", t);
+                    }
+                },
+                0, 5000, TimeUnit.SECONDS));
+
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        long now = System.currentTimeMillis();
+                        mapOnSent.entrySet().removeIf(e -> {
+                            long age = now - e.getValue().gettime();
+                            if (age > TimeUnit.MINUTES.toMillis(2) + 30_000) { // 2 мин 30 сек
+                                ProductInfo pi = e.getValue();
+                                pi.setArticle(e.getKey());
+                                queueStrippingLazar.add(pi);
+                                return true;
+                            }
+                            return false;
+                        });
+                    } catch (Throwable t) {
+                        log.error("Error in strippingLazar cleaner", t);
+                    }
+                },
+                0, 10, TimeUnit.SECONDS));
+
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        long now = System.currentTimeMillis();
+                        mapOnSentFree.entrySet().removeIf(e -> {
+                            long age = now - e.getValue();
+                            if (age > TimeUnit.MINUTES.toMillis(8)) {
+                                queueFree.add(e.getKey());
+                                return true;
+                            }
+                            return false;
+                        });
+                    } catch (Throwable t) {
+                        log.error("Error in Free cleaner", t);
+                    }
+                },
+                0, 30, TimeUnit.SECONDS));
+
+        // --- два парсера с «переключением» направления ---
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
+            try { mainOld(true,  true); } catch (Throwable t) { log.error("parser-v1", t); }
+        }, 0, 100, TimeUnit.MILLISECONDS));
+
+        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
+            try { mainOld(false, true); } catch (Throwable t) { log.error("parser-v2", t); }
+        }, 5_000, 100, TimeUnit.MILLISECONDS));
     }
 
     private void stopTask(long chatId) {
         if (!running) {
-            sendPengradMessage(String.valueOf(chatId),  "Task is not running.");
+            sendPengradMessage(String.valueOf(chatId), "Task is not running.");
             return;
         }
-        sendPengradMessage(String.valueOf(chatId),  "Wait pls");
         running = false;
-        try {
-            taskThreadV1.join();
-            taskThreadV2.join();
-            queue100.add("0~~0~~0");
-            consumer100.join();
-            queueFood.add("0~~0~~0");
-            consumerFood.join();
-            queue90.add("0~~0~~0");
-            consumer90.join();
-            queue80.add("0~~0~~0");
-            consumer80.join();
-            queueBig.add("0~~0~~0");
-            consumerBig.join();
-            queueMyChat.add("0~~0~~0");
-            consumerMyChat.join();
-//            queueError.add("0");
-//            consumerError.join();
-            ProductInfo productInfo = new ProductInfo();
-            productInfo.settime(0L);
-            queueStrippingLazar.add(productInfo);
-            consumerStrippingLazarSent.join();
+        sendPengradMessage(String.valueOf(chatId), "Wait pls.");
 
-            consumerFree.join();
-            queueFree.add("0");
-            consumerFreeSent.join();
+        tasks.forEach(f -> f.cancel(false));   // мягкая отмена
+        tasks.clear();
 
-            consumerStrippingLazar.join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        sendPengradMessage(String.valueOf(chatId),  "Task stopped.");
+        // «пустышки» в очередях, чтобы потоки-таскеры вышли из блокирующего take()
+        queue100.add("0~~0~~0");
+        queue90.add("0~~0~~0");
+        queue80.add("0~~0~~0");
+        queueBig.add("0~~0~~0");
+        queueMyChat.add("0~~0~~0");
+        queueFood.add("0~~0~~0");
+        queueStrippingLazar.add(new ProductInfo()); // time=0 → выход
+        queueFree.add("0");
+
+        sendPengradMessage(String.valueOf(chatId), "Task stopped.");
     }
 
     private void sendPengradMessage(String chatId, String messageText) {
@@ -417,8 +426,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 //    static boolean direction = false;
 
-    public static void mainOld(boolean version, boolean reverse) throws InterruptedException {
-        ExecutorService executorService = Executors.newFixedThreadPool(400);
+    public static void mainOld(boolean version, boolean reverse) {
+        ExecutorService executorService = Executors.newFixedThreadPool(330);
 //        ExecutorService executorService1 = Executors.newFixedThreadPool(400);
         long startTime = System.currentTimeMillis();
         AtomicInteger i= new AtomicInteger();
@@ -441,20 +450,19 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         for (String[] url : halfUrls) {
             executorService.submit(() -> {
-                String currentPage ="";
+                String currentPage;
                 try {
                     int page=0, increment = 0;
 
                     boolean checkPage = true;
 
                     do{
-                        it.getAndIncrement();
                         currentPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&page=" + (increment+1) + "&sort=priceup&priceU=0;800000&spp=30";
                         Connection connectionPage = Jsoup.connect(currentPage)
                                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                                 .method(Connection.Method.GET)
                                 .ignoreContentType(true)
-                                .timeout(1500);
+                                .timeout(10_000);
 
                         for (HttpCookie cookie : Cookies) {
                             connectionPage.cookie(cookie.getName(), cookie.getValue());
@@ -462,37 +470,31 @@ public class MyDualBot extends TelegramLongPollingBot {
                         Connection.Response responsePage = connectionPage.execute();
 
                         String jsons = responsePage.body();
-                        JsonReader jsonReaderPage = new JsonReader(new StringReader(jsons));
-                        jsonReaderPage.setLenient(true);
 
-                        JsonElement rootElementPage = JsonParser.parseReader(jsonReaderPage);
-                        JsonObject rootObjectPage = rootElementPage.getAsJsonObject();
-
-                        int numberCells = rootObjectPage.getAsJsonObject("data").get("total").getAsInt();
+                        Gson gson = new Gson();
+                        Root root = gson.fromJson(jsons, Root.class);
+                        int numberCells = root.data.total;
 
                         if(numberCells == 0){
                             urls.remove(url);
                             continue;
                         }
 
-                        JsonArray productsArray = rootObjectPage.getAsJsonObject("data").getAsJsonArray("products");
                         List<String> newInem = new ArrayList<>();
-                        for (JsonElement productElement : productsArray) {
-                            JsonObject productObject = productElement.getAsJsonObject();
-
-                            String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
-                            String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
-                            String article = productObject.has("id") ? productObject.get("id").getAsString() : "0";
-                            String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
-                            JsonArray sizesArray = productObject.getAsJsonArray("sizes");
-                            for (JsonElement sizeElement : sizesArray) {
-                                if (!newInem.contains(article)) {
-                                    newInem.add(article);
-                                    JsonObject sizeObject = sizeElement.getAsJsonObject();
-                                    int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-                                    total = total/100;
-                                    readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, url[0]);
+                        for (Product product : root.data.products) {
+                            String itemName = product.name != null ? product.name : " ";
+                            String feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
+                            String article = product.id != null ? product.id : "0";
+                            String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
+//                            System.out.println(itemName+" " + feedBackSum + " " + article + " " + totalQuery);
+                            if (!newInem.contains(article)) {
+                                newInem.add(article);
+                                int total = 0;
+                                if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.getFirst().price != null) {
+                                    total = product.sizes.getFirst().price.total / 100;
                                 }
+
+                                readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, url[0]);
                             }
                         }
 //                        Integer previousTotalPage = check.get(url[0]);
@@ -511,10 +513,11 @@ public class MyDualBot extends TelegramLongPollingBot {
                         }
 //                        check.put(url[0], numberCells);
                         increment++;
+                        it.getAndIncrement();
                     }while (increment<page);
                 } catch (Exception e) {
-//                    check.put(url[0], 0);
                     i.getAndIncrement();
+//                    e.printStackTrace();
                 }
             });
         }
@@ -531,32 +534,52 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static Set<String> readPidora(String FILE_PATH) {
         Set<String> sentArticles = ConcurrentHashMap.newKeySet();
-        try (BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sentArticles.add(line);
+        File file = new File(FILE_PATH);
+        try {
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            try (BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sentArticles.add(line);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         return sentArticles;
     }
 
-    private static ConcurrentHashMap<String, String> readSentArticles(String FILE_PATH) {
-        ConcurrentHashMap<String, String> sentArticles =  new ConcurrentHashMap<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(" ");
-                if (parts.length == 2) {
-                    sentArticles.put(parts[0],parts[1]);
+    private static void readSentArticlesToCache(String filePath, Cache<String, Double> cache) {
+        File file = new File(filePath);
+        try {
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split(" ");
+                    if (parts.length == 2) {
+                        try {
+                            double value = Double.parseDouble(parts[1]);
+                            cache.put(parts[0], value);
+                        } catch (NumberFormatException e) {
+                            System.err.println("Invalid number format in file: " + filePath + " -> " + line);
+                        }
+                    }
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
-        return sentArticles;
     }
+
 
     public static void main(String[] args) {
         // Установка CookieManager
@@ -625,19 +648,26 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-    public static void readTxtFile(String itemName, String itemCost, String itemfFeedBackCost, String article, String totalQuery, String category) throws IOException {
+    public static void readTxtFile(String itemName, String itemCost, String itemfFeedBackCost, String article, String totalQuery, String category) throws IOException, InterruptedException {
         if(Objects.equals(itemCost,"0")){
             List<String> sent = repeatCheck(article);
             itemCost = sent.get(1);
         }
         double percent = Double.parseDouble(itemfFeedBackCost) / Double.parseDouble(itemCost);
         ProductInfo productInfo = new ProductInfo();
-        if ((!sentArticles100.containsKey(article) && !sentArticles90.containsKey(article) && !sentArticles80.containsKey(article) && !sentArticlesBig.containsKey(article))
-                || (sentArticles100.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles100.get(article)) -(percent))> 0.05))
-                || (sentArticles80.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles80.get(article)) - (percent))> 0.05))
-                || (sentArticles90.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles90.get(article)) - (percent))> 0.05))
-                || (sentArticlesBig.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesBig.get(article)) - (percent))> 0.05))
-        ) {
+        Double old100 = sentArticles100.getIfPresent(article);
+        Double old90  = sentArticles90.getIfPresent(article);
+        Double old80  = sentArticles80.getIfPresent(article);
+        Double oldBig = sentArticlesBig.getIfPresent(article);
+        Double oldCommunity =  sentArticlesCommunity.getIfPresent(article);
+        Double oldFood = sentArticlesFood.getIfPresent(article);
+        boolean absent = old100 == null && old90 == null && old80 == null && oldBig == null;
+        boolean changed =
+                (old100 != null && Math.abs(old100 - percent) > 0.05) ||
+                        (old90  != null && Math.abs(old90  - percent) > 0.05) ||
+                        (old80  != null && Math.abs(old80  - percent) > 0.05) ||
+                        (oldBig != null && Math.abs(oldBig - percent) > 0.05);
+        if(absent || changed){
             String messege;
 
             if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
@@ -654,7 +684,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
             }
-//        }
             if (percent >= 1) {
                 double bol = hasFeedbackPoints(article);
                 if (bol == 0) {
@@ -665,7 +694,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
-            } else if (percent >= 0.9 && percent < 1) {
+            } else if (percent >= 0.9) {
                 double bol = hasFeedbackPoints(article);
                 if (bol == 0) {
                     return;
@@ -675,7 +704,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
-            } else if (percent >= 0.8 && percent < 0.9) {
+            } else if (percent >= 0.8) {
                 double bol = hasFeedbackPoints(article);
                 if (bol == 0) {
                     return;
@@ -687,15 +716,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                 mapOnSent.put(article, productInfo);
             }
         }
-        if (!sentArticlesCommunity.containsKey(article)
-                || (sentArticlesCommunity.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesCommunity.get(article)) - (percent))> 0.05))
-        ) {
+        if (oldCommunity == null || Math.abs(oldCommunity - percent) > 0.05) {
             String messege;
 
             if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
-//            if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
-//                    || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000)
-//                    || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))){
                 double bol = hasFeedbackPoints(article);
                 if (bol == 0) {
                     return;
@@ -707,7 +731,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 queueMyChat.add(messege);
             }
         }
-        if ((!sentArticlesFood.containsKey(article)  || (sentArticlesFood.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesFood.get(article)) - (percent))> 0.05))) && urlsFood.contains(category)) {
+        if((oldFood==null || Math.abs(oldFood - percent) > 0.05) && urlsFood.contains(category)){
             String messege;
 
             if (percent >= 0.45) {
@@ -720,168 +744,45 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         }
     }
+    private static void runSender(String fileName,
+                                  BlockingQueue<String> queue,
+                                  Cache<String, Double> cache,
+                                  String chatId,
+                                  Integer threadId,
+                                  String secondChatId) throws InterruptedException {
 
-    private static void sentMessege100() throws InterruptedException {
-        String chatIds = "-1002340997107";
-        String chatId = "-1002402655346";
         MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "100.txt",true))){
-            while (running || !queue100.isEmpty()) {
-                String data = queue100.take(); // Извлечение данных из очереди
+        Path path = Path.of(FILE_PATH + fileName);
+
+        try (BufferedWriter writer = Files.newBufferedWriter(path, CREATE, APPEND)) {
+            while (running || !queue.isEmpty()) {
+                String data = queue.take();
+                if ("0~~0~~0".equals(data)) break;
+
                 String[] parts = data.split("~~", 3);
                 String article = parts[0];
                 String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticles100.containsKey(article)
-                        || (sentArticles100.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles100.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticles100.put(article, percent);
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 2, productInfo);
-                    writer.write(article + " " + percent + "\n");
+                double percent = Double.parseDouble(parts[2]);
+
+                Double old = cache.getIfPresent(article);
+                if (old == null || Math.abs(old - percent) > 0.05) {
+                    cache.put(article, percent);
+
+                    // основной канал
+                    tgBot.sendMessage(chatId, threadId, productInfo);
+                    // второй канал (если указан)
+                    if (secondChatId != null) {
+                        tgBot.sendMessage(secondChatId, 0, productInfo);
+                    }
+
+                    writer.write(article + " " + percent);
+                    writer.newLine();
                     writer.flush();
                 }
             }
-        }catch (IOException e) {
+        } catch (IOException e) {
+            log.error("Error in sender {}", fileName, e);
             e.printStackTrace();
-        }
-    }
-    private static void sentMessegeFood() throws InterruptedException {
-        String chatIds = "-1002340997107";
-        String chatId = "-1002474423617";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Food.txt",true))){
-            while (running || !queueFood.isEmpty()) {
-                String data = queueFood.take(); // Извлечение данных из очереди
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticlesFood.containsKey(article)
-                        || (sentArticlesFood.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesFood.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticlesFood.put(article, percent);
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 89330, productInfo);
-                    writer.write(article + " " + percent + "\n");
-                    writer.flush();
-                }
-            }
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void sentMessege90() throws InterruptedException {
-        String chatIds = "-1002340997107";
-        String chatId = "-1002446322077";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "90.txt",true ))){
-            while (running || !queue90.isEmpty()) {
-                String data = queue90.take(); // Извлечение данных из очереди
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticles90.containsKey(article) ||
-                        (sentArticles90.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles90.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticles90.put(article, percent);
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 4, productInfo);
-                    writer.write(article + " " + percent + "\n");
-                    writer.flush();
-                }
-            }
-        }catch (IOException e) {
-
-        }
-    }
-
-    private static void sentMessege80() throws InterruptedException {
-        String chatIds = "-1002340997107";
-        String chatId = "-1002305962649";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "80.txt",true ))){
-            while (running || !queue80.isEmpty()) {
-                String data = queue80.take(); // Извлечение данных из очереди
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticles80.containsKey(article)||
-                        (sentArticles80.containsKey(article) && (Math.abs(Double.parseDouble(sentArticles80.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticles80.put(article, percent);
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 6, productInfo);
-                    writer.write(article + " " + percent + "\n");
-                    writer.flush();
-                }
-            }
-        }catch (IOException e) {
-        }
-    }
-
-    private static void sentMessegeBig() throws InterruptedException {
-        String chatIds = "-1002340997107";
-        String chatId = "-1002290311759";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH + "Big.txt",true ))){
-            while (running || !queueBig.isEmpty()) {
-                String data = queueBig.take(); // Извлечение данных из очереди
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticlesBig.containsKey(article) ||
-                        (sentArticlesBig.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesBig.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticlesBig.put(article, percent);
-                    tgBot.sendMessage(chatId, 0, productInfo);
-                    tgBot.sendMessage(chatIds, 13, productInfo);
-                    writer.write(article + " " + percent + "\n");
-                    writer.flush();
-                }
-            }
-        }catch (IOException e) {
-//            e.printStackTrace();
-        }
-    }
-
-    private static void sentMessegeMyChat() throws InterruptedException {
-        String chatId = "-1002397733938";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(FILE_PATH_COMMUNITY, true))){
-            while (running || !queueMyChat.isEmpty()) {
-                String data = queueMyChat.take(); // Извлечение данных из очереди
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                String percent = parts[2];
-                if(Objects.equals(article, "0")){
-                    continue;
-                }
-                if (!sentArticlesCommunity.containsKey(article)||
-                        (sentArticlesCommunity.containsKey(article) && (Math.abs(Double.parseDouble(sentArticlesCommunity.get(article)) - Double.parseDouble(percent))> 0.05))) { // Проверка уникальности
-                    sentArticlesCommunity.put(article, percent);
-                    tgBot.sendMessage(chatId, 8, productInfo);
-                    writer.write(article + " " + percent + "\n");
-                    writer.flush();
-                }
-            }
-        }catch (IOException e) {
-//            e.printStackTrace();
         }
     }
 
@@ -944,70 +845,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-//    private static void errorHandler() throws InterruptedException, IOException {
-//        ExecutorService executorError = Executors.newFixedThreadPool(400);
-//        for (int i = 0; i < 200; i++) {
-//            executorError.submit(() -> {
-//                while (running || !queueError.isEmpty()) {
-//                    String exception = "";
-//                    try {
-//                        String data = queueError.take(); // Извлекаем данные из очереди
-//                        String[] parts = data.split(":", 2);
-//                        String urls = parts[0];
-//                        String category = parts[1];
-//                        Thread.sleep(2000);
-//                        if ("0".equals(urls)) {
-//                            queueError.add("0"); // Позволяет другим потокам тоже завершиться
-//                            break; // Завершаем поток
-//                        }
-//                        exception = urls;
-//                        test2(urls, category);
-//                    } catch (Exception e) {
-//                        queueError.add(exception);
-//                    }
-//                }
-//            });
-//        }
-//    }
-
-    private static void strippingLazar() throws InterruptedException { // обработка ключ значений
-        while (running) {
-            Iterator<Map.Entry<String, ProductInfo>> iterator = mapOnSent.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, ProductInfo> map = iterator.next();
-                String article = map.getKey();
-                ProductInfo productInfo = map.getValue();
-                productInfo.setArticle(article);
-                long time = System.currentTimeMillis() - map.getValue().gettime();
-                if(time > (1000*30+2*60*1000)){
-//                if(time > (2*1000)){
-                    queueStrippingLazar.add(productInfo);
-                    iterator.remove();
-                }
-            }
-            Thread.sleep(10*1000);
-        }
-    }
-
-    private static void Free() throws InterruptedException { // обработка ключ значений
-        while (running) {
-            Iterator<Map.Entry<String, Long>> iterator = mapOnSentFree.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, Long> map = iterator.next();
-                String article = map.getKey();
-                long time = System.currentTimeMillis() - map.getValue();
-                if(time > 1000*60*8){
-                    queueFree.add(article);
-                    iterator.remove();
-                }
-            }
-            Thread.sleep(30*1000);
-        }
-    }
-
-    public static double hasFeedbackPoints(String url1) throws IOException {
-        String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
-        Connection connection = Jsoup.connect(jsonUrl)
+    public static double hasFeedbackPoints(String url1) throws IOException, InterruptedException {
+        String card = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
+        Connection connection = Jsoup.connect(card)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
@@ -1019,41 +859,26 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         String json = response.body();
 
-        JsonReader jsonReader = new JsonReader(new StringReader(json));
-        jsonReader.setLenient(true);
+        Gson gson = new Gson();
+        Root root = gson.fromJson(json, Root.class);
 
-        JsonElement rootElement = JsonParser.parseReader(jsonReader);
-        JsonObject rootObject = rootElement.getAsJsonObject();
-
-        JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
-        double hasFeedbackPoint = 0;
-        for (JsonElement productElement : productsArray) {
-            JsonObject productObject = productElement.getAsJsonObject();
-            if(productObject.has("supplier")){
-                String supplier = productObject.get("supplier").getAsString();
-                if(pidory.contains(supplier)){
-                    return 0;
-                }
+        for (Product product : root.data.products) {
+            // пропускаем товары от запрещённых поставщиков
+            if (product.supplier != null && pidory.contains(product.supplier)) {
+                return 0;
             }
-            if (productObject.has("feedbackPoints")) {
-                JsonArray sizesArray = productObject.getAsJsonArray("sizes");
+
+            if (product.feedbackPoints != null && !product.feedbackPoints.equals("0")) {
                 double total = 1;
-                for (JsonElement sizeElement : sizesArray) {
-                    JsonObject sizeObject = sizeElement.getAsJsonObject();
-                    if(sizeObject.has("price")){
-                        total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-                        total = total/100;
-                        break;
-                    }
+                if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.get(0).price != null) {
+                    total = product.sizes.get(0).price.total / 100.0;
                 }
-                String feedBackSum = productObject.get("feedbackPoints").getAsString();
-                hasFeedbackPoint = Double.parseDouble(feedBackSum) / total;
-                if (!feedBackSum.equals("0")) {
-                    break;
-                }
+
+                double feedbackPoint = Double.parseDouble(product.feedbackPoints) / total;
+                return feedbackPoint;
             }
         }
-        return hasFeedbackPoint;
+        return 0;
     }
 
     static String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article, Double percent, String totalQuery){
@@ -1072,56 +897,60 @@ public class MyDualBot extends TelegramLongPollingBot {
                 .method(Connection.Method.GET)
                 .ignoreContentType(true);
 
+        // если есть cookies
         for (HttpCookie cookie : Cookies) {
             connection.cookie(cookie.getName(), cookie.getValue());
         }
-        Connection.Response response = connection.execute();
 
-        String json = response.body();
-        JsonReader jsonReader = new JsonReader(new StringReader(json));
-        jsonReader.setLenient(true);
+        String json = connection.execute().body();
 
-        JsonElement rootElement = JsonParser.parseReader(jsonReader);
-        JsonArray objectArray = rootElement.getAsJsonArray();
+        Gson gson = new Gson();
+        UrlFetcher.RootItem[] items = gson.fromJson(json, UrlFetcher.RootItem[].class);
 
         List<String[]> urls = new ArrayList<>();
-        for (JsonElement object : objectArray) {
-            JsonObject productObject = object.getAsJsonObject();
-            processChildElements(productObject, urls);
+        for (UrlFetcher.RootItem item : items) {
+            processChildGson(item, urls);
         }
+
         return urls;
     }
 
-    public static void processChildElements(JsonObject jsonObject, List<String[]> urls) {
-        if (jsonObject.has("childs")) {
-            JsonArray childsArray = jsonObject.getAsJsonArray("childs");
-            for (JsonElement childElement : childsArray) {
-                JsonObject childObject = childElement.getAsJsonObject();
-                processChildElements(childObject, urls);
-            }
-        } else {
-            String obj = jsonObject.has("url") ? jsonObject.get("url").getAsString() : "";
-            if (!obj.isEmpty() && !obj.startsWith("https://vmeste.wildberries.ru") && !obj.startsWith("https://travel.wildberries.ru") && !obj.startsWith("https://digital.wildberries.ru")) {
-                String shard = jsonObject.has("shard") && !jsonObject.get("shard").isJsonNull() ? jsonObject.get("shard").getAsString() : "";
-                if (Objects.equals(shard, "")) {
-                    return;
-                }
-                String query = jsonObject.has("query") && !jsonObject.get("query").isJsonNull() ? jsonObject.get("query").getAsString() : "";
+    private static void processChildGson(UrlFetcher.RootItem item, List<String[]> urls) {
+        addUrlIfValid(item.url, item.shard, item.query, urls);
 
-                obj += "?sort=popular&page=1&ffeedbackpoints=1";
-                obj = ensureUrlStartsWithPrefix(obj);
-                boolean exists = false;
-                for (String[] url : urls) {
-                    if (url[0].equals(obj)) {
-                        exists = true;
-                        break;
-                    }
-                }
-
-                if (!exists) {
-                    urls.add(new String[]{obj, shard, query});
-                }
+        if (item.children != null) {
+            for (UrlFetcher.Child child : item.children) {
+                processChildGson(child, urls);
             }
+        }
+    }
+
+    private static void processChildGson(UrlFetcher.Child child, List<String[]> urls) {
+        addUrlIfValid(child.url, child.shard, child.query, urls);
+
+        if (child.children != null) {
+            for (UrlFetcher.Child nested : child.children) {
+                processChildGson(nested, urls);
+            }
+        }
+    }
+
+    private static void addUrlIfValid(String url, String shard, String query, List<String[]> urls) {
+        if (url == null || url.isEmpty()) return;
+        if (url.startsWith("https://vmeste.wildberries.ru")
+                || url.startsWith("https://travel.wildberries.ru")
+                || url.startsWith("https://digital.wildberries.ru")) return;
+        if (shard == null || shard.isEmpty()) return;
+
+        if (query == null) query = "";
+
+        url += "?sort=popular&page=1&ffeedbackpoints=1";
+        url = ensureUrlStartsWithPrefix(url);
+
+        String finalUrl = url;
+        boolean exists = urls.stream().anyMatch(u -> u[0].equals(finalUrl));
+        if (!exists) {
+            urls.add(new String[]{url, shard, query});
         }
     }
 
@@ -1150,33 +979,24 @@ public class MyDualBot extends TelegramLongPollingBot {
 
             String json = response.body();
 
-            JsonReader jsonReader = new JsonReader(new StringReader(json));
-            jsonReader.setLenient(true);
+            Gson gson = new Gson();
+            Root root = gson.fromJson(json, Root.class);
 
-            JsonElement rootElement = JsonParser.parseReader(jsonReader);
-            JsonObject rootObject = rootElement.getAsJsonObject();
+            for (Product product : root.data.products) {
+                if (product.feedbackPoints != null) {
+                    String feedBackSum = product.feedbackPoints;
+                    String itemName = product.name != null ? product.name : " ";
+                    String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
 
-            JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
-
-            for (JsonElement productElement : productsArray) {
-                JsonObject productObject = productElement.getAsJsonObject();
-                if (productObject.has("feedbackPoints")) {
-                    String feedBackSum = productObject.get("feedbackPoints").getAsString();
-                    String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
-                    String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
-                    JsonArray sizesArray = productObject.getAsJsonArray("sizes");
-                    for (JsonElement sizeElement : sizesArray) {
-                        JsonObject sizeObject = sizeElement.getAsJsonObject();
-                        if(sizeObject.has("price")){
-                            int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-                            total = total/100;
-                            sent.add(itemName);
-                            sent.add(String.valueOf(total));
-                            sent.add(feedBackSum);
-                            sent.add(totalQuery);
-                            break;
-                        }
+                    int total = 0;
+                    if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.getFirst().price != null) {
+                        total = product.sizes.getFirst().price.total / 100;
                     }
+
+                    sent.add(itemName);
+                    sent.add(String.valueOf(total));
+                    sent.add(feedBackSum);
+                    sent.add(totalQuery);
                     return sent;
                 }
             }
@@ -1186,91 +1006,47 @@ public class MyDualBot extends TelegramLongPollingBot {
         return sent;
     }
 
-//    private static void test2(String UrlPage, String category) throws InterruptedException {
-//        try {
-//            Connection connection = Jsoup.connect(UrlPage)
-//                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-//                    .method(Connection.Method.GET)
-//                    .ignoreContentType(true)
-//                    .timeout(1800);
-//            for (HttpCookie cookie : Cookies) {
-//                connection.cookie(cookie.getName(), cookie.getValue());
-//            }
-//            Connection.Response response = connection.execute();
-//
-//            String json = response.body();
-//            JsonReader jsonReader = new JsonReader(new StringReader(json));
-//            jsonReader.setLenient(true);
-//
-//            JsonElement rootElement = JsonParser.parseReader(jsonReader);
-//            JsonObject rootObject = rootElement.getAsJsonObject();
-//
-//            JsonArray productsArray = rootObject.getAsJsonObject("data").getAsJsonArray("products");
-//            List<String> newInem = new ArrayList<>();
-//            for (JsonElement productElement : productsArray) {
-//                JsonObject productObject = productElement.getAsJsonObject();
-//
-//                String itemName = productObject.has("name") ? productObject.get("name").getAsString() : " ";
-//                String feedBackSum = productObject.has("feedbackPoints") ? productObject.get("feedbackPoints").getAsString() : "0";
-//                String article = productObject.has("id") ? productObject.get("id").getAsString() : "0";
-//                String totalQuery = productObject.has("totalQuantity") ? productObject.get("totalQuantity").getAsString() : "0";
-//                JsonArray sizesArray = productObject.getAsJsonArray("sizes");
-//                for (JsonElement sizeElement : sizesArray) {
-//                    if (!newInem.contains(article)) {
-//                        newInem.add(article);
-//                        JsonObject sizeObject = sizeElement.getAsJsonObject();
-//                        int total = sizeObject.getAsJsonObject("price").has("total") ? sizeObject.getAsJsonObject("price").get("total").getAsInt() : 0;
-//                        total = total/100;
-//                        readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, category);
-//                    }
-//                }
-//            }
-//        }catch (Exception e){
-////            queueError.add(UrlPage);
-//            Thread.sleep(1000);
-//            test2(UrlPage, category);
-//        }
-//    }
+    private static void hasPoint(Cache<String, Double> cache,
+                                 String fileName) throws IOException {
 
+        ExecutorService pool = Executors.newFixedThreadPool(100);
 
-    private static ConcurrentHashMap<String, String> hasPoint(ConcurrentHashMap<String, String> articles,String fileName) throws IOException {
-        ExecutorService executorService = Executors.newFixedThreadPool(100);
-        if(articles.isEmpty()){
-            try (BufferedReader reader = new BufferedReader(new FileReader(fileName))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split(" ");
-                    if (parts.length == 2) {
-                        articles.put(parts[0],parts[1]);
-                    }
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        Path path = Path.of(fileName);
+        if (Files.exists(path)) {
+            Files.lines(path)
+                    .map(l -> l.split(" "))
+                    .filter(p -> p.length == 2)          // article double epoch
+                    .forEach(p -> cache.put(p[0], Double.parseDouble(p[1])));
         }
 
-        for (String article : articles.keySet()){
-            executorService.submit(() -> {
-                double checkArticle = 0;
+        Set<String> toRemove = ConcurrentHashMap.newKeySet();
+        for (String article : cache.asMap().keySet()) {
+            pool.submit(() -> {
                 try {
-                    checkArticle = hasFeedbackPoints(article);
+                    double actual = hasFeedbackPoints(article);
+                    Double stored = cache.getIfPresent(article);
+                    if (stored == null || Math.abs(actual - stored) > 0.05) {
+                        toRemove.add(article);
+                    }
                 } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                if(checkArticle != Double.parseDouble(articles.get(article))){
-                    articles.remove(article);
+                    log.error("Check failed for {}", article, e);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             });
         }
 
-        executorService.shutdown();
-        while (!executorService.isTerminated());
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(fileName))) {
-            for(String article : articles.keySet()){
-                writer.write(article + " " + articles.get(article) + "\n");
-                writer.flush();
+        pool.shutdown();
+        while (!pool.isTerminated()) {
+        }
+
+        toRemove.forEach(cache::invalidate);
+
+        try (BufferedWriter w = Files.newBufferedWriter(path, CREATE, TRUNCATE_EXISTING)) {
+            for (Map.Entry<String, Double> e : cache.asMap().entrySet()) {
+                w.write(e.getKey() + " " + e.getValue());
+                w.newLine();
             }
         }
-        return articles;
     }
 }
