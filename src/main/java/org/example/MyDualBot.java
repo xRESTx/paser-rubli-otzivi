@@ -1,7 +1,6 @@
 package org.example;
 
 import com.google.gson.*;
-import com.google.gson.stream.JsonReader;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -31,6 +30,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -49,7 +50,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MyDualBot.class);
 
-        // один пул на весь бот
+    // один пул на весь бот
     private static final ScheduledExecutorService SCHEDULER =
             Executors.newScheduledThreadPool(
                     20,
@@ -66,17 +67,19 @@ public class MyDualBot extends TelegramLongPollingBot {
                     });
 
     private static final Cache<String, Double> sentArticles100 =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
     private static final Cache<String, Double> sentArticles90 =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
     private static final Cache<String, Double> sentArticles80 =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
     private static final Cache<String, Double> sentArticlesBig =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
     private static final Cache<String, Double> sentArticlesCommunity =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
     private static final Cache<String, Double> sentArticlesFood =
-            Caffeine.newBuilder().maximumSize(200_000).build();
+            Caffeine.newBuilder().maximumSize(400_000).build();
+    private static final Cache<String, Double> test =
+            Caffeine.newBuilder().maximumSize(10_000_000).build();
 
     private static final BlockingQueue<String> queue100 = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queue90 = new LinkedBlockingQueue<>();
@@ -143,7 +146,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     try {
                         clearTask(chatId);
                     } catch (IOException e) {
-                        e.printStackTrace();
+//                        e.printStackTrace();
                     }
                 } else if(messageText.equals("/pidory")){
                     waitingForMessage.add(chatId);
@@ -153,7 +156,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         pidory.add(messageText);
                         reader.write("\n" + messageText);
                     } catch (IOException e) {
-                        e.printStackTrace();
+//                        e.printStackTrace();
                     }
                     sendPengradMessage(String.valueOf(chatId),  "The text is written to a file!");
                     waitingForMessage.remove(chatId); // Убираем из режима ожидания
@@ -199,7 +202,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             sendPengradMessage(String.valueOf(chatId), "Task is already running.");
             return;
         }
-        sendPengradMessage(String.valueOf(chatId), "Start task.");
+        sendPengradMessage(String.valueOf(chatId), "Start tasks.");
         pidory = readPidora("pidory.txt");
         readSentArticlesToCache(FILE_PATH + "100.txt", sentArticles100);
         readSentArticlesToCache(FILE_PATH + "90.txt", sentArticles90);
@@ -208,14 +211,14 @@ public class MyDualBot extends TelegramLongPollingBot {
         readSentArticlesToCache(FILE_PATH + "Food.txt", sentArticlesFood);
         readSentArticlesToCache(FILE_PATH_COMMUNITY, sentArticlesCommunity);
 
+        readSentArticlesToCache("test.txt", test);
         running = true;
 
         // 100
         tasks.add(SCHEDULER.submit(() ->
         {
             try {
-                runSender("100.txt", queue100, sentArticles100,"-1002340997107", 2,
-                        "-1002402655346");
+                runSender("100.txt", queue100, sentArticles100,"-1002340997107", 2,"-1002402655346");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("Sender 100 interrupted", e);
@@ -403,7 +406,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     try {
                         Thread.sleep(retryAfter * 1000L);
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+//                        e.printStackTrace();
                         break;
                     }
                 } else {
@@ -412,6 +415,7 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         }
     }
+
     private int getRetryAfter(SendResponse response) {
         String description = response.description();
         if (description != null && description.contains("retry after")) {
@@ -419,16 +423,14 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
                 return Integer.parseInt(parts[parts.length - 1]);
             } catch (NumberFormatException e) {
-                e.printStackTrace();
+//                e.printStackTrace();
             }
         }
         return 0;
     }
-//    static boolean direction = false;
 
     public static void mainOld(boolean version, boolean reverse) {
         ExecutorService executorService = Executors.newFixedThreadPool(330);
-//        ExecutorService executorService1 = Executors.newFixedThreadPool(400);
         long startTime = System.currentTimeMillis();
         AtomicInteger i= new AtomicInteger();
         AtomicInteger it= new AtomicInteger();
@@ -480,27 +482,23 @@ public class MyDualBot extends TelegramLongPollingBot {
                             continue;
                         }
 
-                        List<String> newInem = new ArrayList<>();
+                        List<String> newItem = new ArrayList<>();
                         for (Product product : root.data.products) {
                             String itemName = product.name != null ? product.name : " ";
                             String feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
                             String article = product.id != null ? product.id : "0";
                             String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
-//                            System.out.println(itemName+" " + feedBackSum + " " + article + " " + totalQuery);
-                            if (!newInem.contains(article)) {
-                                newInem.add(article);
+                            if (!newItem.contains(article)) {
+                                newItem.add(article);
                                 int total = 0;
                                 if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.getFirst().price != null) {
                                     total = product.sizes.getFirst().price.total / 100;
                                 }
-
                                 readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, url[0]);
                             }
                         }
-//                        Integer previousTotalPage = check.get(url[0]);
                         int totalPage;
 
-//                        if ((previousTotalPage == null || !previousTotalPage.equals(numberCells)) && checkPage) {
                         if (checkPage) {
                             if (numberCells % 100 == 0) {
                                 totalPage = numberCells / 100;
@@ -511,7 +509,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                             page = totalPage;
                             checkPage = false;
                         }
-//                        check.put(url[0], numberCells);
                         increment++;
                         it.getAndIncrement();
                     }while (increment<page);
@@ -648,12 +645,11 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-    public static void readTxtFile(String itemName, String itemCost, String itemfFeedBackCost, String article, String totalQuery, String category) throws IOException, InterruptedException {
+    public static void readTxtFile(String itemName, String itemCost, String itemFeedBackCost, String article, String totalQuery, String category) throws IOException, InterruptedException {
         if(Objects.equals(itemCost,"0")){
-            List<String> sent = repeatCheck(article);
-            itemCost = sent.get(1);
+            itemCost = String.valueOf(hasFeedbackPoints(article));
         }
-        double percent = Double.parseDouble(itemfFeedBackCost) / Double.parseDouble(itemCost);
+        double percent = Double.parseDouble(itemFeedBackCost) / Double.parseDouble(itemCost);
         ProductInfo productInfo = new ProductInfo();
         Double old100 = sentArticles100.getIfPresent(article);
         Double old90  = sentArticles90.getIfPresent(article);
@@ -661,86 +657,93 @@ public class MyDualBot extends TelegramLongPollingBot {
         Double oldBig = sentArticlesBig.getIfPresent(article);
         Double oldCommunity =  sentArticlesCommunity.getIfPresent(article);
         Double oldFood = sentArticlesFood.getIfPresent(article);
+        Double tests = test.getIfPresent(article);
         boolean absent = old100 == null && old90 == null && old80 == null && oldBig == null;
         boolean changed =
                 (old100 != null && Math.abs(old100 - percent) > 0.05) ||
                         (old90  != null && Math.abs(old90  - percent) > 0.05) ||
                         (old80  != null && Math.abs(old80  - percent) > 0.05) ||
                         (oldBig != null && Math.abs(oldBig - percent) > 0.05);
+        if(tests == null || Math.abs(tests - percent) > 0.01){
+            try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
+                LocalDateTime now = LocalDateTime.now();
+                writer.write(article + " " + dtf.format(now) + "\t");
+                test.put(article, percent);
+            }
+        }
         if(absent || changed){
-            String messege;
+            String message;
+            if (((percent > 0.49 && Integer.parseInt(itemFeedBackCost) >= 1000 && Integer.parseInt(itemFeedBackCost) < 2500)
+                    || (percent > 0.59 && Integer.parseInt(itemFeedBackCost) >= 699 && Integer.parseInt(itemFeedBackCost) < 1000 && percent < 0.9)
+                    || (percent >= 0.4 && Integer.parseInt(itemFeedBackCost) >= 2500))) {
 
-            if (((percent > 0.49 && Integer.parseInt(itemfFeedBackCost) >= 1000 && Integer.parseInt(itemfFeedBackCost) < 2500)
-                    || (percent > 0.59 && Integer.parseInt(itemfFeedBackCost) >= 699 && Integer.parseInt(itemfFeedBackCost) < 1000 && percent < 0.9)
-                    || (percent >= 0.4 && Integer.parseInt(itemfFeedBackCost) >= 2500))) {
-
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article, percent, totalQuery);
-                queueBig.add(messege);
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
+                queueBig.add(message);
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
             }
             if (percent >= 1) {
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
-                queue100.add(messege);
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
+                queue100.add(message);
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
             } else if (percent >= 0.9) {
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
-                queue90.add(messege);
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
+                queue90.add(message);
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
             } else if (percent >= 0.8) {
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
-                queue80.add(messege);
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
+                queue80.add(message);
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
                 mapOnSent.put(article, productInfo);
             }
         }
         if (oldCommunity == null || Math.abs(oldCommunity - percent) > 0.05) {
-            String messege;
+            String message;
 
-            if (percent >= 1.5 || (Double.parseDouble(itemfFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
+            if (percent >= 1.5 || (Double.parseDouble(itemFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
                 productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
                 productInfo.settime(System.currentTimeMillis());
-                mapOnSent.put(article, productInfo);
-                queueMyChat.add(messege);
+                queueMyChat.add(message);
             }
         }
         if((oldFood==null || Math.abs(oldFood - percent) > 0.05) && urlsFood.contains(category)){
-            String messege;
+            String message;
 
             if (percent >= 0.45) {
-                double bol = hasFeedbackPoints(article);
-                if (bol == 0) {
-                    return;
-                }
-                messege = createMessege(itemName, itemCost, itemfFeedBackCost, article,percent,totalQuery);
-                queueFood.add(messege);
+//                double bol = hasFeedbackPoints(article);
+//                if (bol == 0) {
+//                    return;
+//                }
+                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
+                queueFood.add(message);
             }
         }
     }
@@ -788,7 +791,6 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static void sentStrippingLazarSent() throws InterruptedException {
         String chatId = "-1002239949862";
-//        String chatId = "-1002275882959";
         MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try{
             while (running) {
@@ -804,7 +806,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
                         || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
                         || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
-                    String data = createMessege(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
+                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
                     String[] parts = data.split("~~", 3);
                     String productInfo = parts[1]+ "\n\uD83D\uDCCAКуплено с момента публикации в <a href=\"https://t.me/WB_Jackpot_sub_bot\">бота</a>: " + (Integer.parseInt(article.getquantity()) - Integer.parseInt(sent.get(3)))  + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     mapOnSentFree.put(article.getArticle(),System.currentTimeMillis());
@@ -834,7 +836,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
                         || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
                         || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
-                    String data = createMessege(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
+                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
                     String[] parts = data.split("~~", 3);
                     String productInfo = parts[1] + "\n\n <a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     tgBot.sendMessage(chatId, 0, productInfo);
@@ -864,29 +866,28 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         for (Product product : root.data.products) {
             // пропускаем товары от запрещённых поставщиков
-            if (product.supplier != null && pidory.contains(product.supplier)) {
+            if (pidory.contains(product.supplier)) {
                 return 0;
             }
 
             if (product.feedbackPoints != null && !product.feedbackPoints.equals("0")) {
                 double total = 1;
-                if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.get(0).price != null) {
-                    total = product.sizes.get(0).price.total / 100.0;
+                if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.getFirst().price != null) {
+                    total = product.sizes.getFirst().price.total / 100.0;
                 }
 
-                double feedbackPoint = Double.parseDouble(product.feedbackPoints) / total;
-                return feedbackPoint;
+                return Double.parseDouble(product.feedbackPoints) / total;
             }
         }
         return 0;
     }
 
-    static String createMessege(String itemName, String itemCost, String itemfFeedBackCost, String article, Double percent, String totalQuery){
+    static String createMessage(String itemName, String itemCost, String itemFeedBackCost, String article, Double percent, String totalQuery){
         String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
         DecimalFormat df = new DecimalFormat("#.##");
         itemName = itemName.replace(":","");
         return article+ "~~"  + itemName + "\n\uD83D\uDCB8Стоимость " + itemCost + "\u20BD\n" +
-                "\uD83C\uDFB0Кешбэк " + itemfFeedBackCost + "\u20BD\n " +
+                "\uD83C\uDFB0Кешбэк " + itemFeedBackCost + "\u20BD\n " +
                 "\uD83D\uDCAFПроцент выгоды " + df.format(percent * 100) + "%\n" +
                 "\uD83C\uDFB2Количество " + totalQuery + "\n"+ href + "~~" + percent;
     }
@@ -983,23 +984,22 @@ public class MyDualBot extends TelegramLongPollingBot {
             Root root = gson.fromJson(json, Root.class);
 
             for (Product product : root.data.products) {
-                if (product.feedbackPoints != null) {
+                if (product.feedbackPoints != null && product.totalQuantity != null && !product.totalQuantity.equals("0")) {
                     String feedBackSum = product.feedbackPoints;
                     String itemName = product.name != null ? product.name : " ";
-                    String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
+                    String totalQuery = product.totalQuantity;
 
-                    int total = 0;
                     if (product.sizes != null && !product.sizes.isEmpty() && product.sizes.getFirst().price != null) {
-                        total = product.sizes.getFirst().price.total / 100;
+                        int total = product.sizes.getFirst().price.total / 100;
+                        sent.add(itemName);
+                        sent.add(String.valueOf(total));
+                        sent.add(feedBackSum);
+                        sent.add(totalQuery);
+                        break;
                     }
-
-                    sent.add(itemName);
-                    sent.add(String.valueOf(total));
-                    sent.add(feedBackSum);
-                    sent.add(totalQuery);
-                    return sent;
                 }
             }
+            return sent;
         }catch (Exception e){
 //            e.printStackTrace();
         }
