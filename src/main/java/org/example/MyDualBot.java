@@ -362,7 +362,19 @@ public class MyDualBot extends TelegramLongPollingBot {
         running = false;
         sendPengradMessage(String.valueOf(chatId), "Wait pls.");
 
-        tasks.forEach(f -> f.cancel(false));   // мягкая отмена
+        tasks.forEach(f -> f.cancel(false));
+
+        SCHEDULER.shutdown();
+
+        try {
+            if (!SCHEDULER.awaitTermination(30, TimeUnit.SECONDS)) {
+                SCHEDULER.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            SCHEDULER.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
         tasks.clear();
 
         // «пустышки» в очередях, чтобы потоки-таскеры вышли из блокирующего take()
