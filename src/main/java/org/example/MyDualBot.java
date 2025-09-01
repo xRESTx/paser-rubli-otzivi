@@ -97,6 +97,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private final TelegramBot pengradBot;
 
     private static volatile boolean running = false;
+    private static volatile boolean isFree = true;
     private static Set<HttpCookie> Cookies;
     private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
     private final List<String> worker = new ArrayList<>(Arrays.asList("466086607","1039378955"));
@@ -146,6 +147,14 @@ public class MyDualBot extends TelegramLongPollingBot {
                     } catch (IOException e) {
 //                        e.printStackTrace();
                     }
+                } else if (messageText.equals("/stopFree")) {
+                    isFree = false;
+                    queueFree.add("0");
+                    sendPengradMessage(String.valueOf(chatId),  "Бесплатный чат остановлен");
+                }else if (messageText.equals("/runFree")) {
+                    queueFree.clear();
+                    isFree = true;
+                    sendPengradMessage(String.valueOf(chatId),  "Бесплатный чат запущен");
                 }
             }
         }
@@ -199,6 +208,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         readSentArticlesToCache("test.txt", test);
         running = true;
+        isFree = true;
 
         // 100
         tasks.add(SCHEDULER.submit(() ->
@@ -824,7 +834,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         String chatId = "-1002346226214";
         MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try{
-            while (running) {
+            while (running && isFree) {
                 String article = queueFree.take(); // Извлечение данных из очереди
                 if(Objects.equals(article, "0")){
                     continue;
