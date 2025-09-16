@@ -110,12 +110,12 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     @Override
     public String getBotUsername() {
-        return "test_WB41_bot";
+        return "shovel_seller_bot";
     }
 
     @Override
     public String getBotToken() {
-        return "8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc";
+        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
 //        return System.getenv("botToken");
     }
 
@@ -679,14 +679,37 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc"));
+            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
 
     }
 
-    public void sendMessage(String chatId, Integer messageThreadId, String messageText, byte[] imageBytes) throws IOException {
+    public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {
+        boolean sent = false;
+        while (!sent) {
+            SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId).parseMode(ParseMode.HTML);
+            SendResponse response = pengradBot.execute(sendMessage);
+            if (response.isOk()) {
+                sent = true;
+            } else {
+                int retryAfter = getRetryAfter(response);
+                if (retryAfter > 0) {
+                    try {
+                        Thread.sleep(retryAfter * 1000L);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    public void sendPhoto(String chatId, Integer messageThreadId, String messageText, byte[] imageBytes) throws IOException {
         boolean sent = false;
         while (!sent) {
             try {
@@ -812,7 +835,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                                   Integer threadId,
                                   String secondChatId) throws InterruptedException {
 
-        MyDualBot tgBot = new MyDualBot("8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         Path path = Path.of(FILE_PATH + fileName);
 
         try (BufferedWriter writer = Files.newBufferedWriter(path, CREATE, APPEND)) {
@@ -829,24 +852,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                     cache.put(article, percent);
 
                     // основной канал
-                    byte[] imageBytes = new byte[0];
-                    for (int i = 1; i <= 31; i++) {
-                        String url = (i < 10) ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5) + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp" : "https://basket-" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5) + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp";
-
-                        int statusCode = checkLinkStatus(url);
-                        if (statusCode == 200) {
-                            try {
-                                imageBytes = downloadImageToBuffer(url);
-                                break;
-                            } catch (IOException e) {
-
-                            }
-                        }
-                    }
-                    tgBot.sendMessage(chatId, threadId, productInfo,imageBytes);
+                    tgBot.sendMessage(chatId, threadId, productInfo);
                     // второй канал (если указан)
                     if (secondChatId != null) {
-                        tgBot.sendMessage(secondChatId, 0, productInfo,imageBytes);
+                        tgBot.sendMessage(secondChatId, 0, productInfo);
                     }
 
                     writer.write(article + " " + percent);
@@ -895,7 +904,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static void sentStrippingLazarSent() throws InterruptedException {
         String chatId = "-1002239949862";
-        MyDualBot tgBot = new MyDualBot("8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try{
             while (running) {
                 ProductInfo article = queueStrippingLazar.take();
@@ -903,7 +912,9 @@ public class MyDualBot extends TelegramLongPollingBot {
                     return;
                 }
                 List<String> sent = repeatCheck(article.getArticle());
-                boolean hasPoints = !sent.isEmpty();
+                if(sent.isEmpty()){
+                    continue;
+                }
                 double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
                 if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
                         || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
@@ -911,9 +922,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
                     String[] parts = data.split("~~", 3);
                     String productInfo = parts[1];
-                    if(!hasPoints){
-                        productInfo += "❌ Акция закончилась ❌";
-                    }
+
                     productInfo += "\n\uD83D\uDCCAКуплено с момента публикации в <a href=\"https://t.me/WB_Jackpot_sub_bot\">бота</a>: " + (Integer.parseInt(article.getquantity()) - Integer.parseInt(sent.get(3)))  + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     mapOnSentFree.put(article.getArticle(),System.currentTimeMillis());
                     byte[] imageBytes = new byte[0];
@@ -930,7 +939,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                             }
                         }
                     }
-                    tgBot.sendMessage(chatId, 0, productInfo,imageBytes);
+                    tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
                 }
             }
         }catch (IOException e) {
@@ -940,7 +949,7 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static void sentFree() throws InterruptedException {
         String chatId = "-1002346226214";
-        MyDualBot tgBot = new MyDualBot("8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc");
+        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
         try{
             while (running && isFree) {
                 String article = queueFree.take(); // Извлечение данных из очереди
@@ -948,7 +957,9 @@ public class MyDualBot extends TelegramLongPollingBot {
                     return;
                 }
                 List<String> sent = repeatCheck(article);
-                boolean hasPoints = !sent.isEmpty();
+                if(sent.isEmpty()){
+                    continue;
+                }
                 double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
                 if (percent >= 0.8
                         || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
@@ -957,9 +968,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                     String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
                     String[] parts = data.split("~~", 3);
                     String productInfo = parts[1];
-                    if(!hasPoints){
-                        productInfo += "❌ Акция закончилась ❌";
-                    }
                     productInfo += "\n\n <a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
                     byte[] imageBytes = new byte[0];
                     for (int i = 1; i <= 31; i++) {
@@ -975,7 +983,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                             }
                         }
                     }
-                    tgBot.sendMessage(chatId, 0, productInfo,imageBytes);
+                    tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
                 }
             }
         }catch (IOException e) {
@@ -1086,18 +1094,6 @@ public class MyDualBot extends TelegramLongPollingBot {
         String finalUrl = url;
         boolean exists = urls.stream().anyMatch(u -> u[0].equals(finalUrl));
         if (!exists) {
-            try (BufferedWriter writer = Files.newBufferedWriter(
-                    Path.of("urls.txt"),
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.APPEND)) {
-
-                writer.write(url + "\n");
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
             urls.add(new String[]{url, shard, query});
         }
     }
