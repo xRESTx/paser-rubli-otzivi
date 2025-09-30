@@ -30,10 +30,8 @@ import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.text.DecimalFormat;
 
 import java.time.LocalDateTime;
@@ -55,7 +53,6 @@ public class MyDualBot extends TelegramLongPollingBot {
 
     private static final Logger log = LoggerFactory.getLogger(MyDualBot.class);
 
-    // один пул на весь бот
     private ScheduledExecutorService SCHEDULER;
 
     private static final Cache<String, Double> sentArticles100 =
@@ -82,7 +79,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static final BlockingQueue<String> queueMyChat = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueFood = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueDetyam = new LinkedBlockingQueue<>();
-    private static final BlockingQueue<ProductInfo> queueStrippingLazar = new LinkedBlockingQueue<>();
+//    private static final BlockingQueue<ProductInfo> queueStrippingLazar = new LinkedBlockingQueue<>();
     private static final BlockingQueue<String> queueFree = new LinkedBlockingQueue<>();
 
 
@@ -95,6 +92,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static volatile boolean running = false;
     private static volatile boolean isFree = true;
     private static Set<HttpCookie> Cookies;
+    public static Set<String> pidory = ConcurrentHashMap.newKeySet();
+    private final Set<Long> waitingForMessage = new HashSet<>();
     private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
     private final List<String> worker = new ArrayList<>(Arrays.asList("466086607","1039378955"));
 
@@ -133,6 +132,17 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
 
             if(admin.contains(String.valueOf(chatId))){
+                if (waitingForMessage.contains(chatId)) {
+                    try (BufferedWriter reader = new BufferedWriter(new FileWriter("pidory.txt", true))) {
+                        pidory.add(messageText);
+                        reader.write("\n" + messageText);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    sendPengradMessage(String.valueOf(chatId),  "The text is written to a file!");
+                    waitingForMessage.remove(chatId); // Убираем из режима ожидания
+                    return;
+                }
                 switch (messageText) {
                     case "/run" -> startTask(chatId);
                     case "/stop" -> stopTask(chatId);
@@ -153,6 +163,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                         queueFree.clear();
                         isFree = true;
                         sendPengradMessage(String.valueOf(chatId), "Бесплатный чат запущен");
+                    }
+                    case "/pidory" -> {
+                        waitingForMessage.add(chatId);
+                        sendPengradMessage(String.valueOf(chatId),  "Send pidora");
                     }
                 }
             }
@@ -176,7 +190,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         if(running){
             stopTask(chatId);
         }
-        queueStrippingLazar.clear();
+//        queueStrippingLazar.clear();
         queueFree.clear();
         hasPoint(sentArticles100, FILE_PATH + "100.txt");
         hasPoint(sentArticles90, FILE_PATH + "90.txt");
@@ -229,7 +243,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         return t;
                     }
                 });
-
+        pidory = readPidora("pidory.txt");
         readSentArticlesToCache(FILE_PATH + "100.txt", sentArticles100);
         readSentArticlesToCache(FILE_PATH + "90.txt", sentArticles90);
         readSentArticlesToCache(FILE_PATH + "80.txt", sentArticles80);
@@ -332,19 +346,19 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         }));
 
-        // StrippingLazarSent
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-                () -> {
-                    try {
-                        MyDualBot.sentStrippingLazarSent();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.warn("Consumer StrippingLazarSent was interrupted, exiting", e);
-                    } catch (Throwable t) {
-                        log.error("Error in consumer StrippingLazarSent", t);
-                    }
-                },
-                0, 500, TimeUnit.SECONDS));
+//        // StrippingLazarSent
+//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+//                () -> {
+//                    try {
+//                        MyDualBot.sentStrippingLazarSent();
+//                    } catch (InterruptedException e) {
+//                        Thread.currentThread().interrupt();
+//                        log.warn("Consumer StrippingLazarSent was interrupted, exiting", e);
+//                    } catch (Throwable t) {
+//                        log.error("Error in consumer StrippingLazarSent", t);
+//                    }
+//                },
+//                0, 500, TimeUnit.SECONDS));
 
         // Free
         tasks.add(SCHEDULER.scheduleWithFixedDelay(
@@ -366,10 +380,8 @@ public class MyDualBot extends TelegramLongPollingBot {
                         long now = System.currentTimeMillis();
                         mapOnSent.entrySet().removeIf(e -> {
                             long age = now - e.getValue().gettime();
-                            if (age > TimeUnit.MINUTES.toMillis(2) + 30_000) { // 2 мин 30 сек
-                                ProductInfo pi = e.getValue();
-                                pi.setArticle(e.getKey());
-                                queueStrippingLazar.add(pi);
+                            if (age > TimeUnit.MINUTES.toMillis(2) + 20_000) { // 2 мин 20 сек
+                                queueFree.add(e.getKey());
                                 return true;
                             }
                             return false;
@@ -380,23 +392,23 @@ public class MyDualBot extends TelegramLongPollingBot {
                 },
                 0, 10, TimeUnit.SECONDS));
 
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-                () -> {
-                    try {
-                        long now = System.currentTimeMillis();
-                        mapOnSentFree.entrySet().removeIf(e -> {
-                            long age = now - e.getValue();
-                            if (age > TimeUnit.MINUTES.toMillis(8)) {
-                                queueFree.add(e.getKey());
-                                return true;
-                            }
-                            return false;
-                        });
-                    } catch (Throwable t) {
-                        log.error("Error in Free cleaner", t);
-                    }
-                },
-                0, 30, TimeUnit.SECONDS));
+//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
+//                () -> {
+//                    try {
+//                        long now = System.currentTimeMillis();
+//                        mapOnSentFree.entrySet().removeIf(e -> {
+//                            long age = now - e.getValue();
+//                            if (age > TimeUnit.MINUTES.toMillis(8)) {
+//                                queueFree.add(e.getKey());
+//                                return true;
+//                            }
+//                            return false;
+//                        });
+//                    } catch (Throwable t) {
+//                        log.error("Error in Free cleaner", t);
+//                    }
+//                },
+//                0, 30, TimeUnit.SECONDS));
 
         // --- два парсера с «переключением» направления ---
         tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
@@ -424,9 +436,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         queueMyChat.add("0~~0~~0");
         queueFood.add("0~~0~~0");
         queueDetyam.add("0~~0~~0");
-        ProductInfo productInfo = new ProductInfo();
-        productInfo.settime(0L);
-        queueStrippingLazar.add(productInfo); // time=0 → выход
+//        ProductInfo productInfo = new ProductInfo();
+//        productInfo.settime(0L);
+//        queueStrippingLazar.add(productInfo); // time=0 → выход
         queueFree.add("00");
 
         tasks.forEach(f -> f.cancel(false));
@@ -548,6 +560,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                                 String itemName = product.name != null ? product.name : " ";
                                 String feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
                                 String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
+                                String supplier = product.supplier != null ? product.supplier : " ";
+                                if(pidory.contains(supplier)){
+                                    continue;
+                                }
                                 int total = 0;
                                 if (product.sizes != null) {
                                     for (Size size : product.sizes) {
@@ -715,14 +731,12 @@ public class MyDualBot extends TelegramLongPollingBot {
             try {
 
                 SendPhoto sendPhoto = new SendPhoto(chatId, imageBytes);
-                sendPhoto.fileName("photo.jpg"); // Устанавливаем имя файла (опционально)
-                sendPhoto.caption(messageText); // Подпись к фото
-                sendPhoto.parseMode(ParseMode.HTML); // Режим парсинга
+                sendPhoto.fileName("photo.jpg");
+                sendPhoto.caption(messageText);
+                sendPhoto.parseMode(ParseMode.HTML);
                 if (messageThreadId != null) {
                     sendPhoto.messageThreadId(messageThreadId);
                 }
-
-                sendPhoto.parseMode(ParseMode.valueOf("HTML")); // Устанавливаем режим парсинга
 
                 // Выполняем запрос с использованием библиотеки com.pengrad.telegrambot
                 SendResponse response = pengradBot.execute(sendPhoto);
@@ -760,6 +774,11 @@ public class MyDualBot extends TelegramLongPollingBot {
         Double oldDetyam = sentArticlesDetyam.getIfPresent(article);
         Double tests = test.getIfPresent(article);
         boolean absent = old100 == null && old90 == null && old80 == null && oldBig == null;
+        boolean changed =
+                (old100 != null && Math.abs(old100 - percent) > 0.1) ||
+                        (old90  != null && Math.abs(old90  - percent) > 0.1) ||
+                        (old80  != null && Math.abs(old80  - percent) > 0.1) ||
+                        (oldBig != null && Math.abs(oldBig - percent) > 0.1);
         if(tests == null || Math.abs(tests - percent) > 0.01){
             try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
                 DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
@@ -768,7 +787,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 test.put(article, percent);
             }
         }
-        if(absent){
+        if(absent || changed){
             String message;
             if (((percent > 0.49 && Integer.parseInt(itemFeedBackCost) >= 1000 && Integer.parseInt(itemFeedBackCost) < 2500)
                     || (percent > 0.59 && Integer.parseInt(itemFeedBackCost) >= 699 && Integer.parseInt(itemFeedBackCost) < 1000 && percent < 0.9)
@@ -800,7 +819,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 mapOnSent.put(article, productInfo);
             }
         }
-        if (oldCommunity == null) {
+        if (oldCommunity == null || Math.abs(oldCommunity - percent) > 0.1) {
             String message;
 
             if (percent >= 1.5 || (Double.parseDouble(itemFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
@@ -810,7 +829,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 queueMyChat.add(message);
             }
         }
-        if((oldFood==null) && urlsFood.contains(category)){
+        if((oldFood==null || Math.abs(oldFood - percent) > 0.1) && urlsFood.contains(category)){
             String message;
 
             if (percent >= 0.45) {
@@ -818,7 +837,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 queueFood.add(message);
             }
         }
-        if((oldDetyam==null) && urlsDetyam.contains(category)){
+        if((oldDetyam==null || Math.abs(oldDetyam - percent) > 0.1) && urlsDetyam.contains(category)){
             String message;
 
             if (percent >= 0.5) {
@@ -902,50 +921,56 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-    private static void sentStrippingLazarSent() throws InterruptedException {
-        String chatId = "-1002239949862";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try{
-            while (running) {
-                ProductInfo article = queueStrippingLazar.take();
-                if(article.gettime()==0){
-                    return;
-                }
-                List<String> sent = repeatCheck(article.getArticle());
-                if(sent.isEmpty()){
-                    continue;
-                }
-                double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
-                if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
-                        || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
-                        || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
-                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
-                    String[] parts = data.split("~~", 3);
-                    String productInfo = parts[1];
-
-                    productInfo += "\n\uD83D\uDCCAКуплено с момента публикации в <a href=\"https://t.me/WB_Jackpot_sub_bot\">бота</a>: " + (Integer.parseInt(article.getquantity()) - Integer.parseInt(sent.get(3)))  + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
-                    mapOnSentFree.put(article.getArticle(),System.currentTimeMillis());
-                    byte[] imageBytes = new byte[0];
-                    for (int i = 1; i <= 31; i++) {
-                        String url = (i < 10) ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp" : "https://basket-" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp";
-
-                        int statusCode = checkLinkStatus(url);
-                        if (statusCode == 200) {
-                            try {
-                                imageBytes = downloadImageToBuffer(url);
-                                break;
-                            } catch (IOException e) {
-
-                            }
-                        }
-                    }
-                    tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
-                }
-            }
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+//    private static void sentStrippingLazarSent() throws InterruptedException {
+//        String chatId = "-1002239949862";
+//        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+//        try{
+//            while (running) {
+//                ProductInfo article = queueStrippingLazar.take();
+//                if(article.gettime()==0){
+//                    return;
+//                }
+//                List<String> sent = repeatCheck(article.getArticle());
+//                if(sent.isEmpty()){
+//                    continue;
+//                }
+//                double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
+//                if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
+//                        || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
+//                        || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
+//                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
+//                    String[] parts = data.split("~~", 3);
+//                    String productInfo = parts[1];
+//
+//                    productInfo += "\n\uD83D\uDCCAКуплено с момента публикации в <a href=\"https://t.me/WB_Jackpot_sub_bot\">бота</a>: " + (Integer.parseInt(article.getquantity()) - Integer.parseInt(sent.get(3)))  + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
+//                    mapOnSentFree.put(article.getArticle(),System.currentTimeMillis());
+//                    byte[] imageBytes = new byte[0];
+//                    for (int i = 1; i <= 31; i++) {
+//                        String url = (i < 10) ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp" : "https://basket-" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp";
+//
+//                        int statusCode = checkLinkStatus(url);
+//                        if (statusCode == 200) {
+//                            try {
+//                                imageBytes = downloadImageToBuffer(url);
+//                                break;
+//                            } catch (IOException e) {
+//
+//                            }
+//                        }
+//                    }
+//                    if (imageBytes == null || imageBytes.length == 0) {
+//                        tgBot.sendMessage(chatId, 0, productInfo);
+//                    }
+//                    else {
+//                        tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
+//                    }
+//
+//                }
+//            }
+//        }catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
 
     private static void sentFree() throws InterruptedException {
         String chatId = "-1002346226214";
@@ -983,7 +1008,12 @@ public class MyDualBot extends TelegramLongPollingBot {
                             }
                         }
                     }
-                    tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
+                    if (imageBytes == null || imageBytes.length == 0) {
+                        tgBot.sendMessage(chatId, 0, productInfo);
+                    }
+                    else {
+                        tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
+                    }
                 }
             }
         }catch (IOException e) {
