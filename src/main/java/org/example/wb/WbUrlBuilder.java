@@ -36,9 +36,10 @@ public class WbUrlBuilder {
 	 */
 	public String buildSearchPageUrl(String categoryId, String categoryName, int page) {
 		try {
-			// Формируем query в формате: menu_redirect_subject_v2_{id} {name}
-			String queryValue = "menu_redirect_subject_v2_" + categoryId + " " + categoryName;
-			String encodedQuery = URLEncoder.encode(queryValue, StandardCharsets.UTF_8);
+			// Формируем query в формате: menu_v3_{id} {name} (как в рабочем примере)
+			String queryValue = "menu_v3_" + categoryId + " " + categoryName;
+			// Кодируем и заменяем + на %20 (URLEncoder.encode использует + для пробелов, но нам нужен %20)
+			String encodedQuery = URLEncoder.encode(queryValue, StandardCharsets.UTF_8).replace("+", "%20");
 			
 			return HOST + "/__internal/u-search/exactmatch/ru/common/v18/search" +
 					"?ab_testid=new_benefit_sort" +

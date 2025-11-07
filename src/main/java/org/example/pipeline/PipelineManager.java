@@ -1,8 +1,6 @@
 package org.example.pipeline;
 
 import com.google.gson.Gson;
-import org.example.jsonmodel.Product;
-import org.example.jsonmodel.Root;
 import org.example.jsonmodel.Size;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
@@ -32,20 +30,19 @@ public class PipelineManager {
     private final ExecutorService executorService2;
     private final int[] numberPagesProcessed = new int[2]; // Для двух парсеров
     private int delta = 0; // Для балансировки нагрузки
-    private static final java.util.concurrent.atomic.AtomicInteger errorLogCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
     public PipelineManager(List<String[]> urls, Set<HttpCookie> cookies, ProductRouter router) {
 		this.urls = urls;
         this.cookies = cookies != null ? cookies : new HashSet<>();
         this.router = router;
         this.urlBuilder = new org.example.wb.WbUrlBuilder();
-		// Два пула потоков - по 330 потоков каждый (как в старом коде)
-		this.executorService1 = Executors.newFixedThreadPool(330, r -> {
+		// Два пула потоков - по 500 потоков каждый (увеличено для большей нагрузки на сеть)
+		this.executorService1 = Executors.newFixedThreadPool(500, r -> {
 			Thread t = new Thread(r, "wb-parser-1-" + System.nanoTime());
 			t.setDaemon(true);
 			return t;
 		});
-		this.executorService2 = Executors.newFixedThreadPool(330, r -> {
+		this.executorService2 = Executors.newFixedThreadPool(500, r -> {
 			Thread t = new Thread(r, "wb-parser-2-" + System.nanoTime());
 			t.setDaemon(true);
 			return t;
@@ -80,7 +77,7 @@ public class PipelineManager {
     }
 
 	public void run(Supplier<Boolean> isRunning) {
-		log.info("Pipeline started: {} categories, two parsers with 330 threads each, initial cookies: {}", 
+		log.info("Pipeline started: {} categories, two parsers with 500 threads each, initial cookies: {}", 
 				urls.size(), cookies.size());
 		
 		// Запускаем два парсера параллельно как в старом коде
@@ -94,9 +91,9 @@ public class PipelineManager {
 			} catch (Throwable t) {
 				log.error("parser-v1", t);
 			}
-		}, 0, 50, TimeUnit.MILLISECONDS); // Уменьшили задержку для ускорения
+		}, 0, 10, TimeUnit.MILLISECONDS); // Минимальная задержка для максимальной нагрузки
 		
-		// Парсер 2: запускается через 5 секунд, обрабатывает вторую половину
+		// Парсер 2: запускается через 2 секунды, обрабатывает вторую половину
 		scheduler.scheduleWithFixedDelay(() -> {
 			if (!isRunning.get() || stopped) return;
 			try {
@@ -104,7 +101,7 @@ public class PipelineManager {
 			} catch (Throwable t) {
 				log.error("parser-v2", t);
 			}
-		}, 5_000, 50, TimeUnit.MILLISECONDS); // Уменьшили задержку для ускорения
+		}, 2_000, 10, TimeUnit.MILLISECONDS); // Минимальная задержка для максимальной нагрузки
 		
 		// Ждем пока работает
 		while (isRunning.get() && !stopped) {
@@ -178,191 +175,206 @@ public class PipelineManager {
 		}
 		
 		long time = System.currentTimeMillis() - startTime;
-		log.info("Parser {}: {} pages, {} errors, {}ms, categories: {}", 
+		// Логируем статистику по страницам за проход
+		log.info("Parser {}: обработано страниц: {}, ошибок: {}, время: {}ms, категорий: {}", 
 				version ? "v1" : "v2", pages.get(), errors.get(), time, halfUrls.size());
 	}
 
 	private void fetchCategorySync(String[] url, java.util.concurrent.atomic.AtomicInteger errors, 
 	                                java.util.concurrent.atomic.AtomicInteger pages) {
-		String shard = url[1];
+		String categoryLabel = url[0];
 		String query = url[2];
-        String categoryLabel = url[0];
+		// Название категории из JSON (4-й элемент массива, если есть)
+		String categoryName = url.length > 3 ? url[3] : "";
         int page = 0, increment = 0;
         boolean checkPage = true;
         
-        // Извлекаем ID категории и название для нового endpoint
-        String categoryId = urlBuilder.extractCategoryId(query);
-        String categoryName = urlBuilder.extractCategoryName(categoryLabel);
-        boolean useNewEndpoint = categoryId != null && !categoryName.isEmpty();
+        // Проверяем, является ли категория Food или Detyam для использования JSON URL из Map
+        boolean isFood = router.isFoodCategory(categoryLabel);
+        boolean isDetyam = router.isDetyamCategory(categoryLabel);
+        String baseJsonUrl = null;
+        
+        if (isFood) {
+            baseJsonUrl = router.getFoodJsonUrl(categoryLabel);
+        } else if (isDetyam) {
+            baseJsonUrl = router.getDetyamJsonUrl(categoryLabel);
+        }
+        
+        // Если это Food или Detyam и есть JSON URL, используем его
+        // Иначе используем стандартный способ построения URL
+        String categoryId = null;
+        if (baseJsonUrl == null || baseJsonUrl.isEmpty()) {
+            // Извлекаем ID категории для нового endpoint
+            categoryId = urlBuilder.extractCategoryId(query);
+            // Если название категории не было в массиве, пытаемся извлечь из URL
+            if (categoryName == null || categoryName.isEmpty()) {
+                categoryName = urlBuilder.extractCategoryName(categoryLabel);
+            }
+            
+            // Всегда используем новый endpoint, если есть ID категории
+            if (categoryId == null || categoryId.isEmpty()) {
+                errors.incrementAndGet();
+                log.warn("No category ID found for category: {}, query: {}", categoryLabel, query);
+                return;
+            }
+        }
         
             try {
                 do {
                     if (stopped) break;
                     
-                    // Пробуем использовать новый endpoint, если доступен
                     String currentPage;
-                    if (useNewEndpoint) {
-                        currentPage = urlBuilder.buildSearchPageUrl(categoryId, categoryName, increment + 1);
+                    // Если есть baseJsonUrl (Food или Detyam), используем его и изменяем page
+                    if (baseJsonUrl != null && !baseJsonUrl.isEmpty()) {
+                        currentPage = router.changePageInUrl(baseJsonUrl, increment + 1);
                     } else {
-                        currentPage = urlBuilder.buildCatalogPageUrl(shard, query, increment + 1);
+                        // Всегда используем новый endpoint
+                        currentPage = urlBuilder.buildSearchPageUrl(categoryId, categoryName, increment + 1);
                     }
                     
                     String jsonBody = sendPageSync(currentPage);
                 
                 if (jsonBody == null || jsonBody.isEmpty()) {
                     errors.incrementAndGet();
-                    if (increment == 0 && errorLogCount.getAndIncrement() < 5) {
-                        log.info("Empty response for category: {}, URL: {}, cookies: {}", 
-                                categoryLabel, currentPage, cookies.size());
-                    }
+                    log.error("EMPTY RESPONSE: Category={}, Page={}, URL={}", categoryLabel, increment + 1, currentPage);
                     break;
                 }
                 
                 Gson gson = new Gson();
                 int numberCells = 0;
-                int productsOnPage = 0;
                 java.util.List<?> productsList = null;
                 
-                // Парсим в зависимости от формата
-                if (useNewEndpoint) {
-                    // Новый формат: /__internal/u-search/exactmatch
-                    try {
-                        org.example.jsonmodel.SearchRoot searchRoot = gson.fromJson(jsonBody, org.example.jsonmodel.SearchRoot.class);
-                        if (searchRoot == null) {
-                            errors.incrementAndGet();
-                            if (increment == 0 && errorLogCount.getAndIncrement() < 5) {
-                                log.info("Null searchRoot for category: {}, URL: {}", categoryLabel, currentPage);
-                            }
-                            break;
-                        }
-                        numberCells = searchRoot.total;
-                        productsList = searchRoot.products;
-                        productsOnPage = productsList != null ? productsList.size() : 0;
-                    } catch (Exception e) {
+                // Парсим новый формат: /__internal/u-search/exactmatch
+                try {
+                    org.example.jsonmodel.SearchRoot searchRoot = gson.fromJson(jsonBody, org.example.jsonmodel.SearchRoot.class);
+                    if (searchRoot == null) {
                         errors.incrementAndGet();
-                        if (increment == 0 && errorLogCount.getAndIncrement() < 5) {
-                            log.info("JSON parse error (new format) for category: {}, URL: {}, error: {}", 
-                                    categoryLabel, currentPage, e.getMessage());
-                        }
+                        log.error("NULL ROOT: Category={}, Page={}, URL={}", categoryLabel, increment + 1, currentPage);
                         break;
                     }
-                } else {
-                    // Старый формат: /catalog/.../v2/catalog
-                    try {
-                        Root root = gson.fromJson(jsonBody, Root.class);
-                        if (root == null || root.data == null) {
-                            errors.incrementAndGet();
-                            if (increment == 0 && errorLogCount.getAndIncrement() < 5) {
-                                log.info("Null root or data for category: {}, URL: {}", categoryLabel, currentPage);
-                            }
-                            break;
-                        }
-                        numberCells = root.data.total;
-                        productsList = root.data.products;
-                        productsOnPage = productsList != null ? productsList.size() : 0;
-                    } catch (Exception e) {
-                        errors.incrementAndGet();
-                        if (increment == 0 && errorLogCount.getAndIncrement() < 5) {
-                            log.info("JSON parse error (old format) for category: {}, URL: {}, error: {}", 
-                                    categoryLabel, currentPage, e.getMessage());
-                        }
-                        break;
+                    // Используем методы getTotal() и getProducts() для поддержки обоих форматов
+                    numberCells = searchRoot.getTotal();
+                    productsList = searchRoot.getProducts();
+                    
+                    // Логируем информацию о формате JSON для диагностики
+                    if (increment == 0) {
+                        boolean hasDirectProducts = searchRoot.products != null;
+                        boolean hasDataProducts = searchRoot.data != null && searchRoot.data.products != null;
+                        boolean hasDirectTotal = searchRoot.total > 0;
+                        boolean hasDataTotal = searchRoot.data != null && searchRoot.data.total > 0;
+                        log.debug("JSON Format detected: Category={}, DirectProducts={}, DataProducts={}, DirectTotal={}, DataTotal={}, FinalTotal={}, FinalProducts={}", 
+                                categoryLabel, hasDirectProducts, hasDataProducts, hasDirectTotal, hasDataTotal, 
+                                numberCells, productsList != null ? productsList.size() : 0);
                     }
+                } catch (com.google.gson.JsonSyntaxException e) {
+                    errors.incrementAndGet();
+                    log.error("JSON SYNTAX ERROR: Category={}, Page={}, URL={}, Error={}, JSON length={}", 
+                            categoryLabel, increment + 1, currentPage, e.getMessage(), 
+                            jsonBody != null ? jsonBody.length() : 0);
+                    if (jsonBody != null && jsonBody.length() < 1000) {
+                        log.error("JSON Body (first 1000 chars): {}", jsonBody.substring(0, Math.min(1000, jsonBody.length())));
+                    }
+                    break;
+                } catch (Exception e) {
+                    errors.incrementAndGet();
+                    log.error("PARSE ERROR: Category={}, Page={}, URL={}, Error={}, StackTrace={}", 
+                            categoryLabel, increment + 1, currentPage, e.getMessage(), 
+                            java.util.Arrays.toString(e.getStackTrace()).substring(0, Math.min(500, java.util.Arrays.toString(e.getStackTrace()).length())));
+                    break;
                 }
             
-            // Выводим URL первого JSON для каждой категории (для проверки парсинга)
-            if (increment == 0) {
-                System.out.println("=== CATEGORY: " + categoryLabel + " ===");
-                System.out.println("Endpoint: " + (useNewEndpoint ? "NEW (search)" : "OLD (catalog)"));
-                System.out.println("JSON URL: " + currentPage);
-                System.out.println("Total products in category: " + numberCells);
-                System.out.println("Products on this page: " + productsOnPage);
-                System.out.println("=== END CATEGORY ===");
-            }
-            
+            // Логируем категории с 0 товарами
             if (numberCells == 0) {
+                if (increment == 0) {
+                    log.warn("EMPTY CATEGORY: Category={}, URL={}, Total=0", categoryLabel, currentPage);
+                } else {
+                    log.warn("EMPTY PAGE: Category={}, Page={}, URL={}, Total=0", categoryLabel, increment + 1, currentPage);
+                }
                 break;
             }
             
+            // Логируем если productsList null или пустой, но total > 0
+            if ((productsList == null || productsList.isEmpty()) && numberCells > 0) {
+                log.warn("NO PRODUCTS IN RESPONSE: Category={}, Page={}, Total={}, URL={}", 
+                        categoryLabel, increment + 1, numberCells, currentPage);
+            }
+            
+            // Обрабатываем АБСОЛЮТНО все страницы
+            // Если товаров больше 100, значит есть следующая страница - продолжаем цикл
+            // Если товаров <= 100, значит это последняя страница - заканчиваем после обработки
             // Определяем количество страниц (только при первой итерации)
             int totalPages = 0;
             if (checkPage) {
+                // Всегда вычисляем количество страниц на основе общего количества товаров
                 if (numberCells % 100 == 0) {
                     totalPages = numberCells / 100;
                 } else {
                     totalPages = numberCells / 100 + 1;
                 }
                 page = totalPages;
+                log.debug("Category {} has {} products, will process {} pages", categoryLabel, numberCells, totalPages);
                 checkPage = false;
             } else {
                 totalPages = page;
             }
             
-            // Логируем прогресс по страницам (для категорий с несколькими страницами)
-            if (totalPages > 1 && (increment == 0 || increment == totalPages - 1 || (increment + 1) % 10 == 0)) {
-                log.info("Parsing category: {}, page: {}/{}, products on page: {}, total products: {}", 
-                        categoryLabel, increment + 1, totalPages, productsOnPage, numberCells);
-            } else if (totalPages == 1 && pages.get() % 100 == 0) {
-                // Для одностраничных категорий логируем реже
-                log.info("Parsed category: {}, products: {}", categoryLabel, numberCells);
-            }
+            // Убрали логирование прогресса для уменьшения нагрузки на логирование
             
-            // Обрабатываем продукты
+            // Обрабатываем продукты (новый формат: SearchProduct)
             java.util.HashSet<String> seen = new java.util.HashSet<>();
+            int productsProcessed = 0;
+            int productsSkipped = 0;
             if (productsList != null) {
                 for (Object productObj : productsList) {
                     try {
-                        String article;
-                        String itemName;
-                        String feedBackSum;
-                        String totalQuery;
-                        String supplier;
+                        org.example.jsonmodel.SearchProduct product = (org.example.jsonmodel.SearchProduct) productObj;
+                        
+                        if (product == null) {
+                            productsSkipped++;
+                            log.warn("NULL PRODUCT: Category={}, Page={}", categoryLabel, increment + 1);
+                            continue;
+                        }
+                        
+                        String article = product.id > 0 ? String.valueOf(product.id) : "0";
+                        String itemName = product.name != null && !product.name.isEmpty() ? product.name : " ";
+                        String feedBackSum = String.valueOf(product.feedbackPoints);
+                        String totalQuery = String.valueOf(product.totalQuantity);
+                        String supplier = product.supplier != null && !product.supplier.isEmpty() ? product.supplier : " ";
                         int priceRub = 0;
                         
-                        if (useNewEndpoint) {
-                            // Новый формат: SearchProduct
-                            org.example.jsonmodel.SearchProduct product = (org.example.jsonmodel.SearchProduct) productObj;
-                            article = product.id > 0 ? String.valueOf(product.id) : "0";
-                            itemName = product.name != null && !product.name.isEmpty() ? product.name : " ";
-                            feedBackSum = String.valueOf(product.feedbackPoints);
-                            totalQuery = String.valueOf(product.totalQuantity);
-                            supplier = product.supplier != null && !product.supplier.isEmpty() ? product.supplier : " ";
-                            
-                            if (product.sizes != null && !product.sizes.isEmpty()) {
-                                for (Size size : product.sizes) {
-                                    if (size.price != null && size.price.product != 0) {
-                                        priceRub = size.price.product / 100;
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Старый формат: Product
-                            Product product = (Product) productObj;
-                            article = product.id != null ? product.id : "0";
-                            itemName = product.name != null ? product.name : " ";
-                            feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
-                            totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
-                            supplier = product.supplier != null ? product.supplier : " ";
-                            
-                            if (product.sizes != null) {
-                                for (Size size : product.sizes) {
-                                    if (size.price != null && size.price.product != 0) {
-                                        priceRub = size.price.product / 100;
-                                        break;
-                                    }
+                        if (product.sizes != null && !product.sizes.isEmpty()) {
+                            for (Size size : product.sizes) {
+                                if (size.price != null && size.price.product != 0) {
+                                    priceRub = size.price.product / 100;
+                                    break;
                                 }
                             }
                         }
                         
-                        if (!seen.add(article)) continue;
+                        if (!seen.add(article)) {
+                            productsSkipped++;
+                            continue;
+                        }
                         
                         productsFound.incrementAndGet();
+                        productsProcessed++;
                         router.routeProduct(itemName, String.valueOf(priceRub), feedBackSum, article, totalQuery, categoryLabel, supplier);
+                    } catch (ClassCastException e) {
+                        productsSkipped++;
+                        log.error("PRODUCT CAST ERROR: Category={}, Page={}, ProductClass={}, Error={}", 
+                                categoryLabel, increment + 1, productObj != null ? productObj.getClass().getName() : "null", e.getMessage());
                     } catch (Exception e) {
-                        // Игнорируем ошибки обработки отдельных продуктов
-                        log.debug("Error processing product", e);
+                        productsSkipped++;
+                        log.error("PRODUCT PROCESSING ERROR: Category={}, Page={}, Error={}, StackTrace={}", 
+                                categoryLabel, increment + 1, e.getMessage(),
+                                java.util.Arrays.toString(e.getStackTrace()).substring(0, Math.min(300, java.util.Arrays.toString(e.getStackTrace()).length())));
                     }
+                }
+                
+                // Логируем статистику обработки товаров
+                if (increment == 0 || productsProcessed > 0 || productsSkipped > 0) {
+                    log.debug("Products processed: Category={}, Page={}, Total={}, Processed={}, Skipped={}", 
+                            categoryLabel, increment + 1, productsList.size(), productsProcessed, productsSkipped);
                 }
             }
             
@@ -373,18 +385,13 @@ public class PipelineManager {
         } while (increment < page && !stopped);
         } catch (Exception e) {
             errors.incrementAndGet();
-            log.debug("Exception in fetchCategorySync for category: {}, error: {}", url[0], e.getMessage());
+            log.error("EXCEPTION in fetchCategorySync: Category={}, Error={}, StackTrace={}", 
+                    url[0], e.getMessage(),
+                    java.util.Arrays.toString(e.getStackTrace()).substring(0, Math.min(500, java.util.Arrays.toString(e.getStackTrace()).length())));
         }
 	}
 
     private String sendPageSync(String url) {
-        // Логируем предупреждение о пустых cookies только один раз
-        if (cookies.isEmpty()) {
-            int count = errorLogCount.getAndIncrement();
-            if (count == 0) {
-                log.warn("No cookies available! Cookies count: {}. This will be logged only once.", cookies.size());
-            }
-        }
         try {
             // Используем Jsoup как в старом коде
             Connection connectionPage = Jsoup.connect(url)
@@ -394,16 +401,31 @@ public class PipelineManager {
                     .timeout(10_000);
             
             // Добавляем cookies как в старом коде
+            int cookieCount = 0;
             for (HttpCookie cookie : cookies) {
                 connectionPage.cookie(cookie.getName(), cookie.getValue());
+                cookieCount++;
+            }
+            
+            if (cookieCount == 0) {
+                log.debug("Sending request without cookies to: {}", url);
             }
             
             Connection.Response responsePage = connectionPage.execute();
-            return responsePage.body();
-        } catch (Exception e) {
-            if (errorLogCount.get() < 5) {
-                log.debug("Error fetching URL: {}, error: {}", url, e.getMessage());
+            String body = responsePage.body();
+            
+            // Логируем если ответ пустой или очень короткий (может быть ошибка)
+            if (body == null || body.isEmpty()) {
+                log.warn("Empty response body from URL: {}, Status: {}, Cookies used: {}", 
+                        url, responsePage.statusCode(), cookieCount);
+            } else if (body.length() < 100 && !body.contains("{")) {
+                log.warn("Suspiciously short response from URL: {}, Length: {}, Cookies used: {}, Body preview: {}", 
+                        url, body.length(), cookieCount, body.substring(0, Math.min(100, body.length())));
             }
+            
+            return body;
+        } catch (Exception e) {
+            log.error("Error in sendPageSync for URL: {}, Error: {}", url, e.getMessage());
             return "";
         }
     }

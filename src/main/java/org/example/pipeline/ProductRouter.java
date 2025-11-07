@@ -43,6 +43,97 @@ public class ProductRouter {
 	private final Set<String> pidory;
 	private final Set<String> urlsFood;
 	private final Set<String> urlsDetyam;
+	// Map для хранения категория -> JSON URL для Food и Detyam
+	private final java.util.Map<String, String> categoryUrlMapFood;
+	private final java.util.Map<String, String> categoryUrlMapDetyam;
+	
+	/**
+	 * Получает JSON URL для категории Food
+	 * @param category URL категории
+	 * @return JSON URL или null если не найден
+	 */
+	public String getFoodJsonUrl(String category) {
+		return categoryUrlMapFood.get(category);
+	}
+	
+	/**
+	 * Получает JSON URL для категории Detyam
+	 * @param category URL категории
+	 * @return JSON URL или null если не найден
+	 */
+	public String getDetyamJsonUrl(String category) {
+		return categoryUrlMapDetyam.get(category);
+	}
+	
+	/**
+	 * Проверяет, есть ли JSON URL для категории Food
+	 * @param category URL категории
+	 * @return true если есть JSON URL для этой категории
+	 */
+	public boolean hasFoodJsonUrl(String category) {
+		return categoryUrlMapFood.containsKey(category) && categoryUrlMapFood.get(category) != null;
+	}
+	
+	/**
+	 * Проверяет, есть ли JSON URL для категории Detyam
+	 * @param category URL категории
+	 * @return true если есть JSON URL для этой категории
+	 */
+	public boolean hasDetyamJsonUrl(String category) {
+		return categoryUrlMapDetyam.containsKey(category) && categoryUrlMapDetyam.get(category) != null;
+	}
+	
+	/**
+	 * Проверяет, является ли категория Food
+	 * @param category URL категории
+	 * @return true если категория есть в Food
+	 */
+	public boolean isFoodCategory(String category) {
+		return urlsFood.contains(category);
+	}
+	
+	/**
+	 * Проверяет, является ли категория Detyam
+	 * @param category URL категории
+	 * @return true если категория есть в Detyam
+	 */
+	public boolean isDetyamCategory(String category) {
+		return urlsDetyam.contains(category);
+	}
+	
+	/**
+	 * Изменяет параметр page в URL
+	 * @param url исходный URL
+	 * @param page номер страницы
+	 * @return URL с измененным параметром page
+	 */
+	public String changePageInUrl(String url, int page) {
+		if (url == null || url.isEmpty()) {
+			return url;
+		}
+		
+		try {
+			// Если URL содержит параметр page, заменяем его
+			if (url.contains("page=")) {
+				// Заменяем page=XXX на page=новый_номер
+				url = url.replaceAll("page=\\d+", "page=" + page);
+			} else {
+				// Если параметра page нет, добавляем его
+				if (url.contains("?")) {
+					url += "&page=" + page;
+				} else {
+					url += "?page=" + page;
+				}
+			}
+		} catch (Exception e) {
+			// В случае ошибки возвращаем исходный URL
+			org.slf4j.LoggerFactory.getLogger(ProductRouter.class)
+				.debug("Error changing page in URL: {}", e.getMessage());
+		}
+		
+		return url;
+	}
+	
 	private final java.util.function.Supplier<Set<HttpCookie>> cookiesSupplier;
 
 	public ProductRouter(
@@ -66,6 +157,35 @@ public class ProductRouter {
 			Set<String> urlsDetyam,
 			java.util.function.Supplier<Set<HttpCookie>> cookiesSupplier
 	) {
+		this(queue100, queue90, queue80, queueBig, queueMyChat, queueFood, queueDetyam,
+				sentArticles100, sentArticles90, sentArticles80, sentArticlesBig,
+				sentArticlesCommunity, sentArticlesFood, sentArticlesDetyam, test,
+				pidory, urlsFood, urlsDetyam, null, null, cookiesSupplier);
+	}
+	
+	public ProductRouter(
+			BlockingQueue<String> queue100,
+			BlockingQueue<String> queue90,
+			BlockingQueue<String> queue80,
+			BlockingQueue<String> queueBig,
+			BlockingQueue<String> queueMyChat,
+			BlockingQueue<String> queueFood,
+			BlockingQueue<String> queueDetyam,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticles100,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticles90,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticles80,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticlesBig,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticlesCommunity,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticlesFood,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> sentArticlesDetyam,
+			com.github.benmanes.caffeine.cache.Cache<String, Double> test,
+			Set<String> pidory,
+			Set<String> urlsFood,
+			Set<String> urlsDetyam,
+			java.util.Map<String, String> categoryUrlMapFood,
+			java.util.Map<String, String> categoryUrlMapDetyam,
+			java.util.function.Supplier<Set<HttpCookie>> cookiesSupplier
+	) {
 		this.queue100 = queue100;
 		this.queue90 = queue90;
 		this.queue80 = queue80;
@@ -84,6 +204,8 @@ public class ProductRouter {
 		this.pidory = pidory;
 		this.urlsFood = urlsFood;
 		this.urlsDetyam = urlsDetyam;
+		this.categoryUrlMapFood = categoryUrlMapFood != null ? categoryUrlMapFood : new java.util.concurrent.ConcurrentHashMap<>();
+		this.categoryUrlMapDetyam = categoryUrlMapDetyam != null ? categoryUrlMapDetyam : new java.util.concurrent.ConcurrentHashMap<>();
 		this.cookiesSupplier = cookiesSupplier;
 	}
 
@@ -110,14 +232,14 @@ public class ProductRouter {
 				(old90 != null && Math.abs(old90 - percent) > 0.1) ||
 				(old80 != null && Math.abs(old80 - percent) > 0.1) ||
 				(oldBig != null && Math.abs(oldBig - percent) > 0.1);
-		if (tests == null || Math.abs(tests - percent) > 0.01) {
-			try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
-				DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
-				LocalDateTime now = LocalDateTime.now();
-				writer.write(article + " " + dtf.format(now) + "\t");
-				test.put(article, percent);
-			}
-		}
+//		if (tests == null || Math.abs(tests - percent) > 0.01) {
+//			try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
+//				DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
+//				LocalDateTime now = LocalDateTime.now();
+//				writer.write(article + " " + dtf.format(now) + "\t");
+//				test.put(article, percent);
+//			}
+//		}
 //		if (absent || changed) {
 //			String message;
 //			if (((percent > 0.49 && Integer.parseInt(itemFeedBackCost) >= 1000 && Integer.parseInt(itemFeedBackCost) < 2500)
@@ -145,21 +267,27 @@ public class ProductRouter {
 //				productInfo.settime(System.currentTimeMillis());
 //			}
 //		}
-		if (oldCommunity == null || Math.abs(oldCommunity - percent) > 100) {
+		// Отправляем в community только если процент больше определенного значения
+		// или если процент изменился более чем на 1
+		if ((oldCommunity == null || Math.abs(oldCommunity - percent) > 1) && percent > 0.01) {
 			queueMyChat.add(createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery));
+			sentArticlesCommunity.put(article, percent);
 		}
+		
+		// Проверяем категории Food и Detyam
+		// Если товар проходит по критериям стоимости и категория есть в Food/Detyam, отправляем в соответствующие очереди
 //		if ((oldFood == null || Math.abs(oldFood - percent) > 0.1) && urlsFood.contains(category)) {
-//			String message;
 //			if (percent >= 0.45) {
-//				message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
+//				String message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
 //				queueFood.add(message);
+//				sentArticlesFood.put(article, percent);
 //			}
 //		}
 //		if ((oldDetyam == null || Math.abs(oldDetyam - percent) > 0.1) && urlsDetyam.contains(category)) {
-//			String message;
 //			if (percent >= 0.5) {
-//				message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
+//				String message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
 //				queueDetyam.add(message);
+//				sentArticlesDetyam.put(article, percent);
 //			}
 //		}
 	}

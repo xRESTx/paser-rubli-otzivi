@@ -74,6 +74,11 @@ public class MyDualBot extends TelegramLongPollingBot {
     static List<String[]> urls = new ArrayList<>();
     private static Set<String> urlsFood = ConcurrentHashMap.newKeySet();
     private static Set<String> urlsDetyam = ConcurrentHashMap.newKeySet();
+    // Map для хранения категория -> JSON URL из wb_url_mapping.txt
+    private static java.util.Map<String, String> categoryUrlMap = new ConcurrentHashMap<>();
+    // Map для категорий Food и Detyam с их JSON URL
+    private static java.util.Map<String, String> categoryUrlMapFood = new ConcurrentHashMap<>();
+    private static java.util.Map<String, String> categoryUrlMapDetyam = new ConcurrentHashMap<>();
 
 private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
     private org.example.telegram.TelegramSender telegramSender;
@@ -218,16 +223,53 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
         isFree = true;
         clearSentinelMarkers();
 
-        cookieService = new org.example.http.CookieService();
-        cookieService.initAndFetch();
-        Cookies = cookieService.getCookiesSet();
-        log.info("Initial cookies loaded: {} cookies", Cookies.size());
+        // Загружаем cookies точно как в старом main методе
+        try {
+            CookieManager cookieManager = new CookieManager();
+            cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+            
+            HttpClient client = HttpClient.newBuilder()
+                    .cookieHandler(cookieManager)
+                    .build();
+            
+            String urlWb = "https://www.wildberries.ru/";
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(urlWb))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
+                    .GET()
+                    .build();
+            
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            log.info("Cookie loading HTTP status: {}", response.statusCode());
+            
+            Cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
+            log.info("Initial cookies loaded: {} cookies", Cookies.size());
+            
+            if (Cookies.isEmpty()) {
+                log.warn("No cookies received in startTask. Response status: {}, Headers: {}", 
+                        response.statusCode(), response.headers().map());
+            } else {
+                log.debug("Cookies received in startTask: {}", Cookies.stream()
+                        .map(c -> c.getName() + "=" + c.getValue().substring(0, Math.min(20, c.getValue().length())) + "...")
+                        .collect(java.util.stream.Collectors.joining(", ")));
+            }
+            
+            // Также обновляем CookieService для последующего обновления
+            cookieService = new org.example.http.CookieService();
+            cookieService.initAndFetch();
+        } catch (Exception e) {
+            log.error("Error loading cookies in startTask: {}", e.getMessage(), e);
+            Cookies = new HashSet<>();
+            cookieService = new org.example.http.CookieService();
+            cookieService.initAndFetch();
+        }
 
         productRouter = new org.example.pipeline.ProductRouter(
                 queue100, queue90, queue80, queueBig, queueMyChat, queueFood, queueDetyam,
                 sentArticles100, sentArticles90, sentArticles80, sentArticlesBig,
                 sentArticlesCommunity, sentArticlesFood, sentArticlesDetyam, test,
-                pidory, urlsFood, urlsDetyam, () -> cookieService.getCookiesSet()
+                pidory, urlsFood, urlsDetyam, categoryUrlMapFood, categoryUrlMapDetyam,
+                () -> cookieService.getCookiesSet()
         );
 
         pipelineManager = new org.example.pipeline.PipelineManager(urls, Cookies, productRouter);
@@ -312,6 +354,74 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
         }
         return sentArticles;
     }
+    
+    /**
+     * Читает файл wb_url_mapping.txt в формате "категория№ссылка"
+     * @param filePath путь к файлу
+     * @return Map где ключ - категория, значение - JSON URL
+     */
+    private static java.util.Map<String, String> readCategoryUrlMapping(String filePath) {
+        java.util.Map<String, String> mapping = new ConcurrentHashMap<>();
+        File file = new File(filePath);
+        try {
+            if (!file.exists()) {
+                log.warn("Category URL mapping file not found: {}", filePath);
+                return mapping;
+            }
+            try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+                String line;
+                int lineNumber = 0;
+                while ((line = reader.readLine()) != null) {
+                    lineNumber++;
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) {
+                        continue; // Пропускаем пустые строки и комментарии
+                    }
+                    
+                    // Формат: категория№ссылка
+                    if (line.contains("№")) {
+                        String[] parts = line.split("№", 2);
+                        if (parts.length == 2) {
+                            String category = parts[0].trim();
+                            String jsonUrl = parts[1].trim();
+                            if (!category.isEmpty() && !jsonUrl.isEmpty()) {
+                                mapping.put(category, jsonUrl);
+                            } else {
+                                log.debug("Skipping invalid line {} in {}: empty category or URL", lineNumber, filePath);
+                            }
+                        } else {
+                            log.debug("Skipping invalid line {} in {}: no separator", lineNumber, filePath);
+                        }
+                    } else {
+                        log.debug("Skipping invalid line {} in {}: no № separator", lineNumber, filePath);
+                    }
+                }
+            } catch (IOException e) {
+                log.error("Error reading category URL mapping file: {}", filePath, e);
+            }
+        } catch (Exception e) {
+            log.error("Error processing category URL mapping file: {}", filePath, e);
+        }
+        return mapping;
+    }
+    
+    /**
+     * Фильтрует Map категорий по заданному набору категорий
+     * @param categoryUrlMap полный Map категорий
+     * @param categorySet набор категорий для фильтрации
+     * @return отфильтрованный Map
+     */
+    private static java.util.Map<String, String> filterCategoryUrlMap(
+            java.util.Map<String, String> categoryUrlMap, Set<String> categorySet) {
+        java.util.Map<String, String> filtered = new ConcurrentHashMap<>();
+        for (String category : categorySet) {
+            String jsonUrl = categoryUrlMap.get(category);
+            if (jsonUrl != null && !jsonUrl.isEmpty()) {
+                filtered.put(category, jsonUrl);
+            }
+        }
+        return filtered;
+    }
 
     private static void readSentArticlesToCache(String filePath, Cache<String, Double> cache) {
         File file = new File(filePath);
@@ -357,22 +467,42 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
             // Отправка запроса к сайту Wildberries
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(urlWb))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
                     .GET()
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             // Проверка успешности запроса
-            System.out.println(response.statusCode());
+            log.info("Cookie loading HTTP status: {}", response.statusCode());
 
             // Извлечение cookies
             Cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
             log.info("Cookies loaded: {} cookies", Cookies.size());
+            
+            if (Cookies.isEmpty()) {
+                log.warn("No cookies received in main. Response status: {}, Headers: {}", 
+                        response.statusCode(), response.headers().map());
+            } else {
+                log.debug("Cookies received in main: {}", Cookies.stream()
+                        .map(c -> c.getName() + "=" + c.getValue().substring(0, Math.min(20, c.getValue().length())) + "...")
+                        .collect(java.util.stream.Collectors.joining(", ")));
+            }
             urls = getURL();
             log.info("Categories loaded: {} categories", urls.size());
             urlsFood = readPidora("Food.txt");
             urlsDetyam = readPidora("detyam.txt");
             log.info("Food categories: {}, Detyam categories: {}", urlsFood.size(), urlsDetyam.size());
+            
+            // Читаем маппинг категорий на JSON URL из wb_url_mapping.txt
+            categoryUrlMap = readCategoryUrlMapping("wb_url_mapping.txt");
+            log.info("Category URL mapping loaded: {} entries", categoryUrlMap.size());
+            
+            // Фильтруем Map для Food и Detyam категорий
+            categoryUrlMapFood = filterCategoryUrlMap(categoryUrlMap, urlsFood);
+            categoryUrlMapDetyam = filterCategoryUrlMap(categoryUrlMap, urlsDetyam);
+            log.info("Food category URLs: {}, Detyam category URLs: {}", 
+                    categoryUrlMapFood.size(), categoryUrlMapDetyam.size());
 
         } catch (Exception e) {
             log.error("Failed to initialize WB data", e);
@@ -500,7 +630,7 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
     }
 
     private static void processChildGson(UrlFetcher.RootItem item, List<String[]> urls) {
-        addUrlIfValid(item.url, item.shard, item.query, urls);
+        addUrlIfValid(item.url, item.shard, item.query, item.name, urls);
 
         if (item.children != null) {
             for (UrlFetcher.Child child : item.children) {
@@ -510,7 +640,11 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
     }
 
     private static void processChildGson(UrlFetcher.Child child, List<String[]> urls) {
-        addUrlIfValid(child.url, child.shard, child.query, urls);
+        // Используем searchQuery если есть, иначе name
+        String categoryName = (child.searchQuery != null && !child.searchQuery.isEmpty()) 
+                ? child.searchQuery 
+                : (child.name != null ? child.name : "");
+        addUrlIfValid(child.url, child.shard, child.query, categoryName, urls);
         if (child.children != null) {
             for (UrlFetcher.Child nested : child.children) {
                 processChildGson(nested, urls);
@@ -518,7 +652,7 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
         }
     }
 
-    private static void addUrlIfValid(String url, String shard, String query, List<String[]> urls) {
+    private static void addUrlIfValid(String url, String shard, String query, String name, List<String[]> urls) {
         if (url == null || url.isEmpty()) return;
         if (url.startsWith("https://vmeste.wildberries.ru")
                 || url.startsWith("https://travel.wildberries.ru")
@@ -526,6 +660,7 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
         if (shard == null || shard.isEmpty()) return;
 
         if (query == null) query = "";
+        if (name == null) name = "";
 
         url += "?sort=popular&page=1&ffeedbackpoints=1";
         url = new org.example.wb.WbUrlBuilder().ensurePrefix(url);
@@ -533,7 +668,8 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
         String finalUrl = url;
         boolean exists = urls.stream().anyMatch(u -> u[0].equals(finalUrl));
         if (!exists) {
-            urls.add(new String[]{url, shard, query});
+            // Массив: [url, shard, query, name]
+            urls.add(new String[]{url, shard, query, name});
         }
     }
 
@@ -591,7 +727,8 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
                     queue100, queue90, queue80, queueBig, queueMyChat, queueFood, queueDetyam,
                     sentArticles100, sentArticles90, sentArticles80, sentArticlesBig,
                     sentArticlesCommunity, sentArticlesFood, sentArticlesDetyam, test,
-                    pidory, urlsFood, urlsDetyam, () -> cookieService.getCookiesSet()
+                    pidory, urlsFood, urlsDetyam, categoryUrlMapFood, categoryUrlMapDetyam,
+                    () -> cookieService.getCookiesSet()
             );
         }
     }
@@ -697,9 +834,12 @@ private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
     private void refreshCookies() {
         try {
             cookieService.refresh();
+            Set<HttpCookie> newCookies = cookieService.getCookiesSet();
+            Cookies = newCookies != null ? new HashSet<>(newCookies) : new HashSet<>();
             if (pipelineManager != null) {
-                pipelineManager.updateCookies(cookieService.getCookiesSet());
+                pipelineManager.updateCookies(Cookies);
             }
+            log.info("Cookies refreshed: {} cookies", Cookies.size());
         } catch (Throwable t) {
             log.warn("Cookie refresh failed", t);
         }

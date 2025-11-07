@@ -39,6 +39,7 @@ public class CookieService {
 			String urlWb = "https://www.wildberries.ru/";
 			HttpRequest request = HttpRequest.newBuilder()
 					.uri(URI.create(urlWb))
+					.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
 					.GET()
 					.build();
 			
@@ -47,14 +48,25 @@ public class CookieService {
 			// Извлечение cookies как в старом коде
 			Set<HttpCookie> cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
 			
+			// Детальное логирование для диагностики
+			log.debug("Cookie refresh response: status={}, headers={}", response.statusCode(), response.headers().map());
+			if (cookies.isEmpty()) {
+				log.warn("No cookies received from Wildberries. Response status: {}, Headers: {}", 
+						response.statusCode(), response.headers().map());
+			} else {
+				log.debug("Cookies received: {}", cookies.stream()
+						.map(c -> c.getName() + "=" + c.getValue().substring(0, Math.min(20, c.getValue().length())) + "...")
+						.collect(java.util.stream.Collectors.joining(", ")));
+			}
+			
 			cookiesRef.set(cookies);
 			
 			log.info("Cookies refreshed: {} cookies loaded, HTTP status: {}", cookies.size(), response.statusCode());
 			if (cookies.isEmpty()) {
-				log.warn("No cookies received from Wildberries. Will continue without cookies - this may cause 429 errors.");
+				log.warn("No cookies received from Wildberries. Will continue without cookies - this may cause 429 errors or empty responses.");
 			}
 		} catch (Exception e) {
-			log.error("Error refreshing cookies", e);
+			log.error("Error refreshing cookies: {}", e.getMessage(), e);
 		}
 	}
 

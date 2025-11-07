@@ -7,7 +7,7 @@ import java.util.List;
 public class UrlFetcher {
     public static class RootItem {
         int id;
-        String name;
+        public String name;
         public String url;
         public String shard;
         public String query;
@@ -20,13 +20,13 @@ public class UrlFetcher {
     public static class Child {
         int id;
         int parent;
-        String name;
+        public String name;
         String seo;
         public String url;
         public String shard;
         public String query;
         String snippet;
-        String searchQuery;
+        public String searchQuery;
 
         @SerializedName("childs")
         public List<Child> children;
