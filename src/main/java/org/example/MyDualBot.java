@@ -5,16 +5,9 @@ import com.google.gson.*;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-import com.pengrad.telegrambot.TelegramBot;
-import com.pengrad.telegrambot.model.request.ParseMode;
-import com.pengrad.telegrambot.request.SendMessage;
-import com.pengrad.telegrambot.request.SendPhoto;
-import com.pengrad.telegrambot.response.SendResponse;
-
-import org.example.jsonmodel.Product;
-import org.example.jsonmodel.Root;
-import org.example.jsonmodel.Size;
+import org.example.config.BotCommands;
 import org.example.jsonmodel.UrlFetcher;
+import org.example.tasks.TaskOrchestrator;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
@@ -32,10 +25,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.DecimalFormat;
-
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+ 
 import java.util.*;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -52,8 +42,6 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static final String FILE_PATH_COMMUNITY = "sent_articles_community.txt";
 
     private static final Logger log = LoggerFactory.getLogger(MyDualBot.class);
-
-    private ScheduledExecutorService SCHEDULER;
 
     private static final Cache<String, Double> sentArticles100 =
             Caffeine.newBuilder().maximumSize(Long.MAX_VALUE).build();
@@ -87,7 +75,9 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static Set<String> urlsFood = ConcurrentHashMap.newKeySet();
     private static Set<String> urlsDetyam = ConcurrentHashMap.newKeySet();
 
-    private final TelegramBot pengradBot;
+private final BotCommands commands = BotCommands.load(Path.of("commands.json"));
+    private org.example.telegram.TelegramSender telegramSender;
+	private TaskOrchestrator orchestrator;
 
     private static volatile boolean running = false;
     private static volatile boolean isFree = true;
@@ -98,24 +88,29 @@ public class MyDualBot extends TelegramLongPollingBot {
     private final List<String> worker = new ArrayList<>(Arrays.asList("466086607","1039378955"));
 
     static Map<String, ProductInfo> mapOnSent = new HashMap<>();
-    static Map<String, Long> mapOnSentFree = new HashMap<>();
 
-    static int[] numberPagesProcessed = new int[2];
+    
 
-    private static int delta = 0;
-    public MyDualBot(String pengradBotToken) {
-        this.pengradBot = new TelegramBot(pengradBotToken);
+    
+    private org.example.pipeline.PipelineManager pipelineManager;
+    private org.example.pipeline.ProductRouter productRouter;
+    private org.example.http.CookieService cookieService;
+    public MyDualBot(String botToken) {
+        this.telegramSender = new org.example.telegram.TelegramSender(botToken);
+    }
+
+    public MyDualBot() {
+        this.telegramSender = new org.example.telegram.TelegramSender(getBotToken());
     }
 
     @Override
     public String getBotUsername() {
-        return "shovel_seller_bot";
+        return "test_WBs_bot";//shovel_seller_bot
     }
 
     @Override
     public String getBotToken() {
-        return "7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc";
-//        return System.getenv("botToken");
+        return "8253015281:AAGb2HQU7BheAlHV6YZlcfxrAOi-kPtILCc";//7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc
     }
 
     @Override
@@ -123,10 +118,12 @@ public class MyDualBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().getText() != null) {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
+            log.info("Update: chatId={}, text={}", chatId, messageText);
             String regex = "^(?:\\D*\\d\\D*){3,11}$";
             Pattern pattern = Pattern.compile(regex);
             if(worker.contains(String.valueOf(chatId))){
                 if(pattern.matcher(messageText).matches()){
+                    log.info("Worker query detected from {}", chatId);
                     addMessage(chatId, messageText);
                 }
             }
@@ -139,54 +136,58 @@ public class MyDualBot extends TelegramLongPollingBot {
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                    sendPengradMessage(String.valueOf(chatId),  "The text is written to a file!");
+                    telegramSender.sendText(String.valueOf(chatId), null, "The text is written to a file!");
                     waitingForMessage.remove(chatId); // Убираем из режима ожидания
                     return;
                 }
-                switch (messageText) {
-                    case "/run" -> startTask(chatId);
-                    case "/stop" -> stopTask(chatId);
-                    case "/clear" -> {
-                        try {
-                            clearTask(chatId);
-                        } catch (IOException e) {
-//                        e.printStackTrace();
-                        }
+                if (commands.isRun(messageText)) {
+                    log.info("Command RUN by {}", chatId);
+                    startTask(chatId);
+                } else if (commands.isStop(messageText)) {
+                    log.info("Command STOP by {}", chatId);
+                    stopTask(chatId);
+                } else if (commands.isClear(messageText)) {
+                    log.info("Command CLEAR by {}", chatId);
+                    try {
+                        clearTask(chatId);
+                    } catch (IOException e) {
+                        // ignore
                     }
-                    case "/stopFree" -> {
-                        isFree = false;
-                        queueFree.clear();
-                        queueFree.add("00");
-                        sendPengradMessage(String.valueOf(chatId), "Бесплатный чат остановлен");
-                    }
-                    case "/runFree" -> {
-                        queueFree.clear();
-                        isFree = true;
-                        sendPengradMessage(String.valueOf(chatId), "Бесплатный чат запущен");
-                    }
-                    case "/pidory" -> {
-                        waitingForMessage.add(chatId);
-                        sendPengradMessage(String.valueOf(chatId),  "Send pidora");
-                    }
+                } else if (commands.isStopFree(messageText)) {
+                    log.info("Command STOP FREE by {}", chatId);
+                    isFree = false;
+                    queueFree.clear();
+                    queueFree.add("00");
+                    telegramSender.sendText(String.valueOf(chatId), null, "Бесплатный чат остановлен");
+                } else if (commands.isRunFree(messageText)) {
+                    log.info("Command RUN FREE by {}", chatId);
+                    queueFree.clear();
+                    isFree = true;
+                    telegramSender.sendText(String.valueOf(chatId), null, "Бесплатный чат запущен");
+                } else if (commands.isPidory(messageText)) {
+                    log.info("Command PIDORY by {}", chatId);
+                    waitingForMessage.add(chatId);
+                    telegramSender.sendText(String.valueOf(chatId), null, "Send pidora");
                 }
             }
         }
     }
     private void addMessage(long chatId, String messageText){
-        List<String> sent = repeatCheck(messageText);
+        ensureRouter();
+        List<String> sent = productRouter.repeatCheck(messageText);
         if(sent.isEmpty()) {
-            sendPengradMessage(String.valueOf(chatId),  "Кешбэка нет");
+            telegramSender.sendText(String.valueOf(chatId), null, "Кешбэка нет");
             return;
         }
         try {
-            readTxtFile(sent.get(0), sent.get(1), sent.get(2), messageText, sent.get(3),"");
+            productRouter.routeProduct(sent.get(0), sent.get(1), sent.get(2), messageText, sent.get(3), "", " ");
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
         }
-        sendPengradMessage(String.valueOf(chatId),  "Сообщение отправлено ");
+        telegramSender.sendText(String.valueOf(chatId), null, "Сообщение отправлено ");
     }
     private void clearTask(long chatId) throws IOException {
-        sendPengradMessage(String.valueOf(chatId),  "Start cleaning");
+        telegramSender.sendText(String.valueOf(chatId), null, "Start cleaning");
         if(running){
             stopTask(chatId);
         }
@@ -200,233 +201,73 @@ public class MyDualBot extends TelegramLongPollingBot {
         hasPoint(sentArticlesFood, FILE_PATH + "Food.txt");
         hasPoint(sentArticlesDetyam, FILE_PATH + "detyam.txt");
 
-        sendPengradMessage(String.valueOf(chatId),  "Cleaning is complete");
+        telegramSender.sendText(String.valueOf(chatId), null, "Cleaning is complete");
         startTask(chatId);
     }
 
-    private final List<Future<?>> tasks = new ArrayList<>();
-
     private void startTask(long chatId) {
         if (running) {
-            sendPengradMessage(String.valueOf(chatId), "Task is already running.");
+            telegramSender.sendText(String.valueOf(chatId), null, "Task is already running.");
             return;
         }
-        sendPengradMessage(String.valueOf(chatId), "Start tasks.");
+        telegramSender.sendText(String.valueOf(chatId), null, "Start tasks.");
 
-        // Закрой предыдущий пул потоков, если он существует
-        if (SCHEDULER != null) {
-            SCHEDULER.shutdown();
-            try {
-                if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) {
-                    SCHEDULER.shutdownNow();
-                    if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) {
-                        log.error("Scheduler did not terminate");
-                    }
-                }
-            } catch (InterruptedException e) {
-                SCHEDULER.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        }
+        loadCachesAndPidory();
 
-        // Создай новый пул потоков
-        SCHEDULER = Executors.newScheduledThreadPool(
-                20,
-                new ThreadFactory() {
-                    private final AtomicInteger idx = new AtomicInteger();
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread t = new Thread(r, "wb-sched-" + idx.incrementAndGet());
-                        t.setDaemon(true);
-                        t.setUncaughtExceptionHandler(
-                                (th, ex) -> log.error("Thread {} died", th.getName(), ex));
-                        return t;
-                    }
-                });
-        pidory = readPidora("pidory.txt");
-        readSentArticlesToCache(FILE_PATH + "100.txt", sentArticles100);
-        readSentArticlesToCache(FILE_PATH + "90.txt", sentArticles90);
-        readSentArticlesToCache(FILE_PATH + "80.txt", sentArticles80);
-        readSentArticlesToCache(FILE_PATH + "Big.txt", sentArticlesBig);
-        readSentArticlesToCache(FILE_PATH + "Food.txt", sentArticlesFood);
-        readSentArticlesToCache(FILE_PATH + "detyam.txt", sentArticlesDetyam);
-        readSentArticlesToCache(FILE_PATH_COMMUNITY, sentArticlesCommunity);
-
-        readSentArticlesToCache("test.txt", test);
         running = true;
         isFree = true;
+        clearSentinelMarkers();
 
-        // 100
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("100.txt", queue100, sentArticles100,"-1002340997107", 2,"-1002402655346");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender 100 interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender 100", t);
-            }
-        }));
+        cookieService = new org.example.http.CookieService();
+        cookieService.initAndFetch();
+        Cookies = cookieService.getCookiesSet();
+        log.info("Initial cookies loaded: {} cookies", Cookies.size());
 
-        // 90
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("90.txt", queue90, sentArticles90, "-1002340997107", 4,"-1002446322077");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender 90 interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender 90", t);
-            }
-        }));
+        productRouter = new org.example.pipeline.ProductRouter(
+                queue100, queue90, queue80, queueBig, queueMyChat, queueFood, queueDetyam,
+                sentArticles100, sentArticles90, sentArticles80, sentArticlesBig,
+                sentArticlesCommunity, sentArticlesFood, sentArticlesDetyam, test,
+                pidory, urlsFood, urlsDetyam, () -> cookieService.getCookiesSet()
+        );
 
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("80.txt", queue80, sentArticles80, "-1002340997107", 6,"-1002305962649");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender 80 interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender 80", t);
-            }
-        }));
+        pipelineManager = new org.example.pipeline.PipelineManager(urls, Cookies, productRouter);
+        // Немедленно обновляем cookies в PipelineManager
+        if (cookieService != null) {
+            pipelineManager.updateCookies(cookieService.getCookiesSet());
+        }
 
+        orchestrator = new TaskOrchestrator(
+                20,
+                createThreadFactory(),
+                () -> running,
+                log,
+                TimeUnit.SECONDS.toMillis(10));
 
-        // Big
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("Big.txt", queueBig, sentArticlesBig, "-1002340997107", 13,"-1002290311759");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender Big interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender Big", t);
-            }
-        }));
+        registerSenderTasks(orchestrator);
+        orchestrator.addFixedDelayTask("free-sender", this::processFreeQueue, 0, 5000, TimeUnit.SECONDS);
+        orchestrator.addFixedDelayTask("map-cleaner", this::cleanupMapOnSent, 0, 10, TimeUnit.SECONDS);
+        orchestrator.addImmediateTask("pipeline", () -> pipelineManager.run(() -> running));
+        orchestrator.addFixedDelayTask("cookie-refresh", this::refreshCookies, 0, 300, TimeUnit.SECONDS);
 
-        // Food
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("Food.txt", queueFood, sentArticlesFood, "-1002340997107", 89330,"-1002474423617");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender Food interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender Food", t);
-            }
-        }));
-        //detyam
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("detyam.txt", queueDetyam, sentArticlesDetyam, "-1002340997107", 255209,null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender Food interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender Food", t);
-            }
-        }));
-
-        // Community
-        tasks.add(SCHEDULER.submit(() ->
-        {
-            try {
-                runSender("_community.txt", queueMyChat, sentArticlesCommunity, "-1002397733938", 8,null);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Sender Community interrupted", e);
-            } catch (Throwable t) {
-                log.error("Error in sender Community", t);
-            }
-        }));
-
-//        // StrippingLazarSent
-//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-//                () -> {
-//                    try {
-//                        MyDualBot.sentStrippingLazarSent();
-//                    } catch (InterruptedException e) {
-//                        Thread.currentThread().interrupt();
-//                        log.warn("Consumer StrippingLazarSent was interrupted, exiting", e);
-//                    } catch (Throwable t) {
-//                        log.error("Error in consumer StrippingLazarSent", t);
-//                    }
-//                },
-//                0, 500, TimeUnit.SECONDS));
-
-        // Free
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-                () -> {
-                    try {
-                        MyDualBot.sentFree();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.warn("Consumer Free was interrupted, exiting", e);
-                    } catch (Throwable t) {
-                        log.error("Error in consumer Free", t);
-                    }
-                },
-                0, 5000, TimeUnit.SECONDS));
-
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-                () -> {
-                    try {
-                        long now = System.currentTimeMillis();
-                        mapOnSent.entrySet().removeIf(e -> {
-                            long age = now - e.getValue().gettime();
-                            if (age > TimeUnit.MINUTES.toMillis(2) + 20_000) { // 2 мин 20 сек
-                                queueFree.add(e.getKey());
-                                return true;
-                            }
-                            return false;
-                        });
-                    } catch (Throwable t) {
-                        log.error("Error in strippingLazar cleaner", t);
-                    }
-                },
-                0, 10, TimeUnit.SECONDS));
-
-//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-//                () -> {
-//                    try {
-//                        long now = System.currentTimeMillis();
-//                        mapOnSentFree.entrySet().removeIf(e -> {
-//                            long age = now - e.getValue();
-//                            if (age > TimeUnit.MINUTES.toMillis(8)) {
-//                                queueFree.add(e.getKey());
-//                                return true;
-//                            }
-//                            return false;
-//                        });
-//                    } catch (Throwable t) {
-//                        log.error("Error in Free cleaner", t);
-//                    }
-//                },
-//                0, 30, TimeUnit.SECONDS));
-
-        // --- два парсера с «переключением» направления ---
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
-            try { mainOld(true,  true); } catch (Throwable t) { log.error("parser-v1", t); }
-        }, 0, 100, TimeUnit.MILLISECONDS));
-
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
-            try { mainOld(false, true); } catch (Throwable t) { log.error("parser-v2", t); }
-        }, 5_000, 100, TimeUnit.MILLISECONDS));
+        orchestrator.start();
+        log.info("All tasks started: pipeline, {} sender tasks, free-sender, map-cleaner, cookie-refresh", 7);
+        log.info("Pipeline will process {} categories with up to 300 concurrent requests", urls.size());
     }
 
     private void stopTask(long chatId) {
         if (!running) {
-            sendPengradMessage(String.valueOf(chatId), "Task is not running.");
+        telegramSender.sendText(String.valueOf(chatId), null, "Task is not running.");
             return;
         }
         running = false;
-        sendPengradMessage(String.valueOf(chatId), "Wait pls.");
+        telegramSender.sendText(String.valueOf(chatId), null, "Wait pls.");
+
+        if (pipelineManager != null) {
+            try { pipelineManager.stop(); } catch (Throwable ignored) {}
+            pipelineManager = null;
+        }
+        productRouter = null;
+        cookieService = null;
 
         // «пустышки» в очередях, чтобы потоки-таскеры вышли из блокирующего take()
         queue100.add("0~~0~~0");
@@ -441,172 +282,15 @@ public class MyDualBot extends TelegramLongPollingBot {
 //        queueStrippingLazar.add(productInfo); // time=0 → выход
         queueFree.add("00");
 
-        tasks.forEach(f -> f.cancel(false));
-
-        SCHEDULER.shutdown();
-
-        try {
-            if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) { // Увеличил время ожидания до 60 секунд
-                SCHEDULER.shutdownNow();
-                if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) { // Добавил еще одну проверку
-                    log.error("Scheduler did not terminate");
-                }
-            }
-        } catch (InterruptedException e) {
-            SCHEDULER.shutdownNow();
-            Thread.currentThread().interrupt();
+        if (orchestrator != null) {
+            orchestrator.stop();
+            orchestrator = null;
         }
 
-        tasks.clear();
-
-        sendPengradMessage(String.valueOf(chatId), "Task stopped.");
+        telegramSender.sendText(String.valueOf(chatId), null, "Task stopped.");
     }
 
-    private void sendPengradMessage(String chatId, String messageText) {
-        boolean sent = false;
-        while (!sent) {
-            SendMessage request = new SendMessage(chatId, messageText).parseMode(ParseMode.Markdown);
-            SendResponse response = pengradBot.execute(request);
-
-            if (response.isOk()) {
-                sent = true;
-            } else {
-                int retryAfter = getRetryAfter(response);
-                if (retryAfter > 0) {
-                    try {
-                        Thread.sleep(retryAfter * 1000L);
-                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    private int getRetryAfter(SendResponse response) {
-        String description = response.description();
-        if (description != null && description.contains("retry after")) {
-            String[] parts = description.split(" ");
-            try {
-                return Integer.parseInt(parts[parts.length - 1]);
-            } catch (NumberFormatException e) {
-//                e.printStackTrace();
-            }
-        }
-        return 0;
-    }
-
-    public static void mainOld(boolean version, boolean reverse) {
-        ExecutorService executorService = Executors.newFixedThreadPool(330);
-        long startTime = System.currentTimeMillis();
-        AtomicInteger i= new AtomicInteger();
-        AtomicInteger it= new AtomicInteger();
-        int halfSize = urls.size() / 2;
-        List<String[]> halfUrls;
-        if((numberPagesProcessed[0] - numberPagesProcessed[1])>50){
-            delta++;
-        }else if((numberPagesProcessed[1] - numberPagesProcessed[0])>50){
-            delta--;
-        }
-        if(version) {
-            halfUrls = new ArrayList<>(urls.subList(0, halfSize - delta));
-        } else {
-            halfUrls = new ArrayList<>(urls.subList(halfSize-delta, urls.size()));
-        }
-        if(reverse){
-            Collections.reverse(halfUrls);
-        }
-
-        for (String[] url : halfUrls) {
-            executorService.submit(() -> {
-                String currentPage;
-                try {
-                    int page=0, increment = 0;
-
-                    boolean checkPage = true;
-
-                    do{
-                        currentPage = "https://catalog.wb.ru/catalog/" + url[1] + "/v2/catalog?ab_testing=false&appType=1&" + url[2] + "&curr=rub&dest=-5551776&ffeedbackpoints=1&page=" + (increment+1) + "&sort=priceup&priceU=0;800000&spp=30";
-                        Connection connectionPage = Jsoup.connect(currentPage)
-                                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-                                .method(Connection.Method.GET)
-                                .ignoreContentType(true)
-                                .timeout(10_000);
-
-                        for (HttpCookie cookie : Cookies) {
-                            connectionPage.cookie(cookie.getName(), cookie.getValue());
-                        }
-                        Connection.Response responsePage = connectionPage.execute();
-
-                        String jsons = responsePage.body();
-
-                        Gson gson = new Gson();
-                        Root root = gson.fromJson(jsons, Root.class);
-                        int numberCells = root.data.total;
-
-                        if(numberCells == 0){
-                            urls.remove(url);
-                            continue;
-                        }
-
-                        List<String> newItem = new ArrayList<>();
-                        for (Product product : root.data.products) {
-                            String article = product.id != null ? product.id : "0";
-                            if (!newItem.contains(article)) {
-                                newItem.add(article);
-                                String itemName = product.name != null ? product.name : " ";
-                                String feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
-                                String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
-                                String supplier = product.supplier != null ? product.supplier : " ";
-                                if(pidory.contains(supplier)){
-                                    continue;
-                                }
-                                int total = 0;
-                                if (product.sizes != null) {
-                                    for (Size size : product.sizes) {
-                                        if (size.price != null && size.price.product != 0) {
-                                            total = size.price.product / 100;
-                                            break;
-                                        }
-                                    }
-                                }
-                                readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, url[0]);
-                            }
-                        }
-                        int totalPage;
-
-                        if (checkPage) {
-                            if (numberCells % 100 == 0) {
-                                totalPage = numberCells / 100;
-                            } else {
-                                totalPage = numberCells / 100;
-                                totalPage++;
-                            }
-                            page = totalPage;
-                            checkPage = false;
-                        }
-                        increment++;
-                        it.getAndIncrement();
-                    }while (increment<page);
-                } catch (Exception e) {
-                    i.getAndIncrement();
-//                    e.printStackTrace();
-                }
-            });
-        }
-        executorService.shutdown();
-        while (!executorService.isTerminated()) {
-        }
-        if(version){
-            numberPagesProcessed[0] = Integer.parseInt(String.valueOf(it));
-        }else {
-            numberPagesProcessed[1] = Integer.parseInt(String.valueOf(it));
-        }
-        System.out.println((System.currentTimeMillis() - startTime) + " " + i + " " + it + " " + halfUrls.size());
-    }
+    // Sending logic moved to TelegramSender
 
     private static Set<String> readPidora(String FILE_PATH) {
         Set<String> sentArticles = ConcurrentHashMap.newKeySet();
@@ -683,168 +367,30 @@ public class MyDualBot extends TelegramLongPollingBot {
 
             // Извлечение cookies
             Cookies = new HashSet<>(cookieManager.getCookieStore().getCookies());
-            Cookies.forEach(System.out::println);
+            log.info("Cookies loaded: {} cookies", Cookies.size());
             urls = getURL();
+            log.info("Categories loaded: {} categories", urls.size());
             urlsFood = readPidora("Food.txt");
             urlsDetyam = readPidora("detyam.txt");
+            log.info("Food categories: {}, Detyam categories: {}", urlsFood.size(), urlsDetyam.size());
 
         } catch (Exception e) {
+            log.error("Failed to initialize WB data", e);
             e.printStackTrace();
         }
 
         // Регистрация бота Telegram
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc"));
+            MyDualBot bot = new MyDualBot();
+            botsApi.registerBot(bot);
+            log.info("Bot registered: username={}, token={}...", bot.getBotUsername(), bot.getBotToken().substring(0, Math.min(10, bot.getBotToken().length())));
+            log.info("Bot is running and waiting for commands...");
         } catch (TelegramApiException e) {
+            log.error("Failed to register bot", e);
             e.printStackTrace();
         }
 
-    }
-
-    public void sendMessage(String chatId, Integer messageThreadId, String messageText) throws IOException {
-        boolean sent = false;
-        while (!sent) {
-            SendMessage sendMessage = new SendMessage(chatId, messageText).messageThreadId(messageThreadId).parseMode(ParseMode.HTML);
-            SendResponse response = pengradBot.execute(sendMessage);
-            if (response.isOk()) {
-                sent = true;
-            } else {
-                int retryAfter = getRetryAfter(response);
-                if (retryAfter > 0) {
-                    try {
-                        Thread.sleep(retryAfter * 1000L);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    public void sendPhoto(String chatId, Integer messageThreadId, String messageText, byte[] imageBytes) throws IOException {
-        boolean sent = false;
-        while (!sent) {
-            try {
-
-                SendPhoto sendPhoto = new SendPhoto(chatId, imageBytes);
-                sendPhoto.fileName("photo.jpg");
-                sendPhoto.caption(messageText);
-                sendPhoto.parseMode(ParseMode.HTML);
-                if (messageThreadId != null) {
-                    sendPhoto.messageThreadId(messageThreadId);
-                }
-
-                // Выполняем запрос с использованием библиотеки com.pengrad.telegrambot
-                SendResponse response = pengradBot.execute(sendPhoto);
-                if (response.isOk()) {
-                    sent = true;
-                } else {
-                    int retryAfter = getRetryAfter(response);
-                    if (retryAfter > 0) {
-                        Thread.sleep(retryAfter * 1000L);
-                    } else {
-                        throw new RuntimeException("Failed to send message: " + response.description());
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Thread was interrupted", e);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to send message", e);
-            }
-        }
-    }
-
-    public static void readTxtFile(String itemName, String itemCost, String itemFeedBackCost, String article, String totalQuery, String category) throws IOException, InterruptedException {
-        if(Objects.equals(itemCost,"0")){
-            itemCost = String.valueOf(hasFeedbackPoints(article));
-        }
-        double percent = Double.parseDouble(itemFeedBackCost) / Double.parseDouble(itemCost);
-        ProductInfo productInfo = new ProductInfo();
-        Double old100 = sentArticles100.getIfPresent(article);
-        Double old90  = sentArticles90.getIfPresent(article);
-        Double old80  = sentArticles80.getIfPresent(article);
-        Double oldBig = sentArticlesBig.getIfPresent(article);
-        Double oldCommunity =  sentArticlesCommunity.getIfPresent(article);
-        Double oldFood = sentArticlesFood.getIfPresent(article);
-        Double oldDetyam = sentArticlesDetyam.getIfPresent(article);
-        Double tests = test.getIfPresent(article);
-        boolean absent = old100 == null && old90 == null && old80 == null && oldBig == null;
-        boolean changed =
-                (old100 != null && Math.abs(old100 - percent) > 0.1) ||
-                        (old90  != null && Math.abs(old90  - percent) > 0.1) ||
-                        (old80  != null && Math.abs(old80  - percent) > 0.1) ||
-                        (oldBig != null && Math.abs(oldBig - percent) > 0.1);
-        if(tests == null || Math.abs(tests - percent) > 0.01){
-            try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
-                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
-                LocalDateTime now = LocalDateTime.now();
-                writer.write(article + " " + dtf.format(now) + "\t");
-                test.put(article, percent);
-            }
-        }
-        if(absent || changed){
-            String message;
-            if (((percent > 0.49 && Integer.parseInt(itemFeedBackCost) >= 1000 && Integer.parseInt(itemFeedBackCost) < 2500)
-                    || (percent > 0.59 && Integer.parseInt(itemFeedBackCost) >= 699 && Integer.parseInt(itemFeedBackCost) < 1000 && percent < 0.9)
-                    || (percent >= 0.4 && Integer.parseInt(itemFeedBackCost) >= 2500))) {
-
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article, percent, totalQuery);
-                queueBig.add(message);
-                productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
-                productInfo.settime(System.currentTimeMillis());
-                mapOnSent.put(article, productInfo);
-            }
-            if (percent >= 1) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                queue100.add(message);
-                productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
-                productInfo.settime(System.currentTimeMillis());
-                mapOnSent.put(article, productInfo);
-            } else if (percent >= 0.9) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                queue90.add(message);
-                productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
-                productInfo.settime(System.currentTimeMillis());
-                mapOnSent.put(article, productInfo);
-            } else if (percent >= 0.8) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                queue80.add(message);
-                productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
-                productInfo.settime(System.currentTimeMillis());
-                mapOnSent.put(article, productInfo);
-            }
-        }
-        if (oldCommunity == null || Math.abs(oldCommunity - percent) > 0.1) {
-            String message;
-
-            if (percent >= 1.5 || (Double.parseDouble(itemFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                productInfo.setquantity(String.valueOf(Integer.parseInt(totalQuery)));
-                productInfo.settime(System.currentTimeMillis());
-                queueMyChat.add(message);
-            }
-        }
-        if((oldFood==null || Math.abs(oldFood - percent) > 0.1) && urlsFood.contains(category)){
-            String message;
-
-            if (percent >= 0.45) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                queueFood.add(message);
-            }
-        }
-        if((oldDetyam==null || Math.abs(oldDetyam - percent) > 0.1) && urlsDetyam.contains(category)){
-            String message;
-
-            if (percent >= 0.5) {
-                message = createMessage(itemName, itemCost, itemFeedBackCost, article,percent,totalQuery);
-                queueDetyam.add(message);
-            }
-        }
     }
 
     private static void runSender(String fileName,
@@ -852,40 +398,44 @@ public class MyDualBot extends TelegramLongPollingBot {
                                   Cache<String, Double> cache,
                                   String chatId,
                                   Integer threadId,
-                                  String secondChatId) throws InterruptedException {
-
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+                                  String secondChatId,
+                                  org.example.telegram.TelegramSender tgSender) throws InterruptedException {
         Path path = Path.of(FILE_PATH + fileName);
-
-        try (BufferedWriter writer = Files.newBufferedWriter(path, CREATE, APPEND)) {
-            while (running || !queue.isEmpty()) {
-                String data = queue.take();
-                if ("0~~0~~0".equals(data)) return;
-                String[] parts = data.split("~~", 3);
-                String article = parts[0];
-                String productInfo = parts[1];
-                double percent = Double.parseDouble(parts[2]);
-
-                Double old = cache.getIfPresent(article);
-                if (old == null) {
-                    cache.put(article, percent);
-
-                    // основной канал
-                    tgBot.sendMessage(chatId, threadId, productInfo);
-                    // второй канал (если указан)
-                    if (secondChatId != null) {
-                        tgBot.sendMessage(secondChatId, 0, productInfo);
-                    }
-
-                    writer.write(article + " " + percent);
-                    writer.newLine();
-                    writer.flush();
-                }
-            }
-        } catch (IOException e) {
-            log.error("Error in sender {}", fileName, e);
-            e.printStackTrace();
+        // общий single-writer
+        org.example.io.FileSingleWriter singleWriter = Holder.FILE_WRITER;
+        if (!Holder.WRITER_STARTED.getAndSet(true)) {
+            Thread t = new Thread(singleWriter, "file-single-writer");
+            t.setDaemon(true);
+            t.start();
         }
+
+        while (running || !queue.isEmpty()) {
+            String data = queue.take();
+            if ("0~~0~~0".equals(data)) return;
+            String[] parts = data.split("~~", 3);
+            String article = parts[0];
+            String productInfo = parts[1];
+            double percent = Double.parseDouble(parts[2]);
+
+            Double old = cache.getIfPresent(article);
+            if (old == null) {
+                cache.put(article, percent);
+
+                // основной канал
+                tgSender.sendText(chatId, threadId, productInfo);
+                // второй канал (если указан)
+                if (secondChatId != null) {
+                    tgSender.sendText(secondChatId, 0, productInfo);
+                }
+
+                singleWriter.submit(path, article + " " + percent);
+            }
+        }
+    }
+
+    private static class Holder {
+        private static final org.example.io.FileSingleWriter FILE_WRITER = new org.example.io.FileSingleWriter();
+        private static final java.util.concurrent.atomic.AtomicBoolean WRITER_STARTED = new java.util.concurrent.atomic.AtomicBoolean(false);
     }
     public static int checkLinkStatus(String imageUrl) {
         try {
@@ -921,150 +471,9 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
     }
 
-//    private static void sentStrippingLazarSent() throws InterruptedException {
-//        String chatId = "-1002239949862";
-//        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-//        try{
-//            while (running) {
-//                ProductInfo article = queueStrippingLazar.take();
-//                if(article.gettime()==0){
-//                    return;
-//                }
-//                List<String> sent = repeatCheck(article.getArticle());
-//                if(sent.isEmpty()){
-//                    continue;
-//                }
-//                double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
-//                if (percent >= 0.8 || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
-//                        || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
-//                        || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
-//                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article.getArticle(), percent, sent.get(3));
-//                    String[] parts = data.split("~~", 3);
-//                    String productInfo = parts[1];
-//
-//                    productInfo += "\n\uD83D\uDCCAКуплено с момента публикации в <a href=\"https://t.me/WB_Jackpot_sub_bot\">бота</a>: " + (Integer.parseInt(article.getquantity()) - Integer.parseInt(sent.get(3)))  + "\n\n<a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
-//                    mapOnSentFree.put(article.getArticle(),System.currentTimeMillis());
-//                    byte[] imageBytes = new byte[0];
-//                    for (int i = 1; i <= 31; i++) {
-//                        String url = (i < 10) ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp" : "https://basket-" + i + ".wbbasket.ru/vol" + article.getArticle().substring(0, article.getArticle().length() - 5) + "/part" + article.getArticle().substring(0, article.getArticle().length() - 3) + "/" + article + "/images/c516x688/1.webp";
-//
-//                        int statusCode = checkLinkStatus(url);
-//                        if (statusCode == 200) {
-//                            try {
-//                                imageBytes = downloadImageToBuffer(url);
-//                                break;
-//                            } catch (IOException e) {
-//
-//                            }
-//                        }
-//                    }
-//                    if (imageBytes == null || imageBytes.length == 0) {
-//                        tgBot.sendMessage(chatId, 0, productInfo);
-//                    }
-//                    else {
-//                        tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
-//                    }
-//
-//                }
-//            }
-//        }catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//    }
+    
 
-    private static void sentFree() throws InterruptedException {
-        String chatId = "-1002346226214";
-        MyDualBot tgBot = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
-        try{
-            while (running && isFree) {
-                String article = queueFree.take(); // Извлечение данных из очереди
-                if(Objects.equals(article, "00")){
-                    return;
-                }
-                List<String> sent = repeatCheck(article);
-                if(sent.isEmpty()){
-                    continue;
-                }
-                double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
-                if (percent >= 0.8
-                        || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
-                        || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
-                        || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500))){
-                    String data = createMessage(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
-                    String[] parts = data.split("~~", 3);
-                    String productInfo = parts[1];
-                    productInfo += "\n\n <a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
-                    byte[] imageBytes = new byte[0];
-                    for (int i = 1; i <= 31; i++) {
-                        String url = (i < 10) ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5) + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp" : "https://basket-" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5) + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp";
-
-                        int statusCode = checkLinkStatus(url);
-                        if (statusCode == 200) {
-                            try {
-                                imageBytes = downloadImageToBuffer(url);
-                                break;
-                            } catch (IOException e) {
-
-                            }
-                        }
-                    }
-                    if (imageBytes == null || imageBytes.length == 0) {
-                        tgBot.sendMessage(chatId, 0, productInfo);
-                    }
-                    else {
-                        tgBot.sendPhoto(chatId, 0, productInfo,imageBytes);
-                    }
-                }
-            }
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static double hasFeedbackPoints(String url1) throws IOException, InterruptedException {
-        String card = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ url1;
-        Connection connection = Jsoup.connect(card)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-                .method(Connection.Method.GET)
-                .ignoreContentType(true);
-
-        for (HttpCookie cookie : Cookies) {
-            connection.cookie(cookie.getName(), cookie.getValue());
-        }
-        Connection.Response response = connection.execute();
-
-        String json = response.body();
-
-        Gson gson = new Gson();
-        Root root = gson.fromJson(json, Root.class);
-
-        for (Product product : root.data.products) {
-
-            if (product.feedbackPoints != null && !product.feedbackPoints.equals("0")) {
-                double total = 1;
-                if (product.sizes != null) {
-                    for (Size size : product.sizes) {
-                        if (size.price != null && size.price.product != 0) {
-                            total = (double) size.price.product / 100;
-                            break;
-                        }
-                    }
-                }
-                return Double.parseDouble(product.feedbackPoints) / total;
-            }
-        }
-        return 0;
-    }
-
-    static String createMessage(String itemName, String itemCost, String itemFeedBackCost, String article, Double percent, String totalQuery){
-        String href = "https://www.wildberries.ru/catalog/" + article + "/detail.aspx";
-        DecimalFormat df = new DecimalFormat("#.##");
-        itemName = itemName.replace(":","");
-        return article+ "~~"  + itemName + "\n\uD83D\uDCB8Стоимость " + itemCost + "\u20BD\n" +
-                "\uD83C\uDFB0Кешбэк " + itemFeedBackCost + "\u20BD\n " +
-                "\uD83D\uDCAFПроцент выгоды " + df.format(percent * 100) + "%\n" +
-                "\uD83C\uDFB2Количество " + totalQuery + "\n"+ href + "~~" + percent;
-    }
+    // hasFeedbackPoints moved into ProductRouter
 
     public static List<String[]> getURL() throws IOException {
         Connection connection = Jsoup.connect("https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v3.json")
@@ -1119,68 +528,13 @@ public class MyDualBot extends TelegramLongPollingBot {
         if (query == null) query = "";
 
         url += "?sort=popular&page=1&ffeedbackpoints=1";
-        url = ensureUrlStartsWithPrefix(url);
+        url = new org.example.wb.WbUrlBuilder().ensurePrefix(url);
 
         String finalUrl = url;
         boolean exists = urls.stream().anyMatch(u -> u[0].equals(finalUrl));
         if (!exists) {
             urls.add(new String[]{url, shard, query});
         }
-    }
-
-    public static String ensureUrlStartsWithPrefix(String url) {
-        String prefixDigital = "https://www.wildberries.ru";
-        String prefixVmeste = "https://vmeste.wildberries.ru/";
-
-        if (url.startsWith(prefixDigital) || url.startsWith(prefixVmeste)) {
-            return url;
-        }
-        return prefixDigital + url;
-    }
-    private static List<String> repeatCheck(String article){
-        List<String> sent = new ArrayList<>();
-        try {
-            String jsonUrl = "https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-5923914&spp=30&ab_testing=false&nm="+ article;
-            Connection connection = Jsoup.connect(jsonUrl)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0")
-                    .method(Connection.Method.GET)
-                    .ignoreContentType(true);
-
-            for (HttpCookie cookie : Cookies) {
-                connection.cookie(cookie.getName(), cookie.getValue());
-            }
-            Connection.Response response = connection.execute();
-
-            String json = response.body();
-
-            Gson gson = new Gson();
-            Root root = gson.fromJson(json, Root.class);
-
-            for (Product product : root.data.products) {
-                if (product.feedbackPoints != null && product.totalQuantity != null && !product.totalQuantity.equals("0")) {
-                    String feedBackSum = product.feedbackPoints;
-                    String itemName = product.name != null ? product.name : " ";
-                    String totalQuery = product.totalQuantity;
-
-                    if (product.sizes != null) {
-                        for (Size size : product.sizes) {
-                            if (size.price != null && size.price.product != 0) {
-                                int priceRub = size.price.product / 100;
-                                sent.add(itemName);
-                                sent.add(String.valueOf(priceRub));
-                                sent.add(feedBackSum);
-                                sent.add(totalQuery);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            return sent;
-        }catch (Exception e){
-//            e.printStackTrace();
-        }
-        return sent;
     }
 
     private static void hasPoint(Cache<String, Double> cache,
@@ -1197,18 +551,18 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
 
         Set<String> toRemove = ConcurrentHashMap.newKeySet();
+        MyDualBot botRef = new MyDualBot("7564492259:AAHJFWRqVvJQuuUIVd5584h8ePoFxsg7YVc");
+        botRef.ensureRouter();
         for (String article : cache.asMap().keySet()) {
             pool.submit(() -> {
                 try {
-                    double actual = hasFeedbackPoints(article);
+                    double actual = botRef.productRouter.hasFeedbackPoints(article);
                     Double stored = cache.getIfPresent(article);
                     if (stored == null || Math.abs(actual - stored) > 0.1) {
                         toRemove.add(article);
                     }
                 } catch (IOException e) {
                     log.error("Check failed for {}", article, e);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
                 }
             });
         }
@@ -1224,6 +578,143 @@ public class MyDualBot extends TelegramLongPollingBot {
                 w.write(e.getKey() + " " + e.getValue());
                 w.newLine();
             }
+        }
+    }
+
+    private void ensureRouter() {
+        if (cookieService == null) {
+            cookieService = new org.example.http.CookieService();
+            cookieService.initAndFetch();
+        }
+        if (productRouter == null) {
+            productRouter = new org.example.pipeline.ProductRouter(
+                    queue100, queue90, queue80, queueBig, queueMyChat, queueFood, queueDetyam,
+                    sentArticles100, sentArticles90, sentArticles80, sentArticlesBig,
+                    sentArticlesCommunity, sentArticlesFood, sentArticlesDetyam, test,
+                    pidory, urlsFood, urlsDetyam, () -> cookieService.getCookiesSet()
+            );
+        }
+    }
+
+    private void loadCachesAndPidory() {
+        pidory = readPidora("pidory.txt");
+        readSentArticlesToCache(FILE_PATH + "100.txt", sentArticles100);
+        readSentArticlesToCache(FILE_PATH + "90.txt", sentArticles90);
+        readSentArticlesToCache(FILE_PATH + "80.txt", sentArticles80);
+        readSentArticlesToCache(FILE_PATH + "Big.txt", sentArticlesBig);
+        readSentArticlesToCache(FILE_PATH + "Food.txt", sentArticlesFood);
+        readSentArticlesToCache(FILE_PATH + "detyam.txt", sentArticlesDetyam);
+        readSentArticlesToCache(FILE_PATH_COMMUNITY, sentArticlesCommunity);
+        readSentArticlesToCache("test.txt", test);
+    }
+
+    private ThreadFactory createThreadFactory() {
+        return new ThreadFactory() {
+            private final AtomicInteger idx = new AtomicInteger();
+
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "wb-sched-" + idx.incrementAndGet());
+                t.setDaemon(true);
+                t.setUncaughtExceptionHandler((th, ex) -> log.error("Thread {} died", th.getName(), ex));
+                return t;
+            }
+        };
+    }
+
+    private void registerSenderTasks(TaskOrchestrator orchestrator) {
+        orchestrator.addImmediateTask("sender-100", () -> runSender("100.txt", queue100, sentArticles100, "-1002340997107", 2, "-1002402655346", telegramSender));
+        orchestrator.addImmediateTask("sender-90", () -> runSender("90.txt", queue90, sentArticles90, "-1002340997107", 4, "-1002446322077", telegramSender));
+        orchestrator.addImmediateTask("sender-80", () -> runSender("80.txt", queue80, sentArticles80, "-1002340997107", 6, "-1002305962649", telegramSender));
+        orchestrator.addImmediateTask("sender-big", () -> runSender("Big.txt", queueBig, sentArticlesBig, "-1002340997107", 13, "-1002290311759", telegramSender));
+        orchestrator.addImmediateTask("sender-food", () -> runSender("Food.txt", queueFood, sentArticlesFood, "-1002340997107", 89330, "-1002474423617", telegramSender));
+        orchestrator.addImmediateTask("sender-detyam", () -> runSender("detyam.txt", queueDetyam, sentArticlesDetyam, "-1002340997107", 255209, null, telegramSender));
+        orchestrator.addImmediateTask("sender-community", () -> runSender("_community.txt", queueMyChat, sentArticlesCommunity, "-1002397733938", 8, null, telegramSender));
+    }
+
+    private void processFreeQueue() throws InterruptedException {
+        final String chatId = "-1002346226214";
+        while (running && isFree) {
+            String article = queueFree.take();
+            if (Objects.equals(article, "00")) {
+                return;
+            }
+            ensureRouter();
+            List<String> sent = productRouter.repeatCheck(article);
+            if (sent.isEmpty()) {
+                continue;
+            }
+            double percent = Double.parseDouble(sent.get(2)) / Integer.parseInt(sent.get(1));
+            boolean needSend = percent >= 0.8
+                    || ((percent > 0.49 && Integer.parseInt(sent.get(2)) >= 1000 && Integer.parseInt(sent.get(2)) < 2500)
+                    || (percent > 0.59 && Integer.parseInt(sent.get(2)) >= 699 && Integer.parseInt(sent.get(2)) < 1000)
+                    || (percent >= 0.4 && Integer.parseInt(sent.get(2)) >= 2500));
+            if (!needSend) {
+                continue;
+            }
+            String data = productRouter.createMessage(sent.get(0), sent.get(1), sent.get(2), article, percent, sent.get(3));
+            String[] parts = data.split("~~", 3);
+            String productInfo = parts[1];
+            productInfo += "\n\n <a href=\"https://t.me/WB_Jackpot/3793\">\uD83D\uDCB0Товар найден группой WB_Jackpot. Присоединяйтесь!\uD83D\uDCB0</a>";
+
+            byte[] imageBytes = null;
+            for (int i = 1; i <= 31; i++) {
+                String url = (i < 10)
+                        ? "https://basket-0" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5)
+                        + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp"
+                        : "https://basket-" + i + ".wbbasket.ru/vol" + article.substring(0, article.length() - 5)
+                        + "/part" + article.substring(0, article.length() - 3) + "/" + article + "/images/c516x688/1.webp";
+
+                int statusCode = checkLinkStatus(url);
+                if (statusCode == 200) {
+                    try {
+                        imageBytes = downloadImageToBuffer(url);
+                        break;
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+            if (imageBytes == null || imageBytes.length == 0) {
+                telegramSender.sendText(chatId, 0, productInfo);
+            } else {
+                telegramSender.sendPhoto(chatId, 0, productInfo, imageBytes);
+            }
+        }
+    }
+
+    private void cleanupMapOnSent() {
+        long now = System.currentTimeMillis();
+        mapOnSent.entrySet().removeIf(e -> {
+            long age = now - e.getValue().gettime();
+            if (age > TimeUnit.MINUTES.toMillis(2) + 20_000) {
+                queueFree.add(e.getKey());
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void refreshCookies() {
+        try {
+            cookieService.refresh();
+            if (pipelineManager != null) {
+                pipelineManager.updateCookies(cookieService.getCookiesSet());
+            }
+        } catch (Throwable t) {
+            log.warn("Cookie refresh failed", t);
+        }
+    }
+
+    private void clearSentinelMarkers() {
+        queue100.remove("0~~0~~0");
+        queue90.remove("0~~0~~0");
+        queue80.remove("0~~0~~0");
+        queueBig.remove("0~~0~~0");
+        queueMyChat.remove("0~~0~~0");
+        queueFood.remove("0~~0~~0");
+        queueDetyam.remove("0~~0~~0");
+        while (queueFree.remove("00")) {
+            // remove all markers
         }
     }
 }
