@@ -97,16 +97,9 @@ public class SearchUrlGenerator {
         
         log.info("Generated URLs for {} categories", generatedUrls.size());
         log.info("Query type distribution: {}", queryTypeStats);
-        
-        // Выводим детальную статистику в консоль
-        System.out.println("\n=== Query Type Distribution ===");
-        for (Map.Entry<UrlBuilder.QueryType, Integer> entry : queryTypeStats.entrySet()) {
-            System.out.println(String.format("  %s: %d categories", entry.getKey(), entry.getValue()));
-        }
-        
-        System.out.println("\n=== Query Parameter Examples ===");
+
+
         for (Map.Entry<UrlBuilder.QueryType, List<String>> entry : queryTypeExamples.entrySet()) {
-            System.out.println(String.format("\n%s examples:", entry.getKey()));
             for (String example : entry.getValue()) {
                 System.out.println("  " + example);
             }
@@ -122,13 +115,6 @@ public class SearchUrlGenerator {
                 defaultCount++;
             }
         }
-        System.out.println(String.format("\n=== Mapping Statistics ==="));
-        System.out.println(String.format("  Categories with mapping: %d (%.2f%%)", 
-            mappedCount, mappedCount * 100.0 / generatedUrls.size()));
-        System.out.println(String.format("  Categories using default (menu_v3): %d (%.2f%%)", 
-            defaultCount, defaultCount * 100.0 / generatedUrls.size()));
-        System.out.println(String.format("  Total mappings loaded from file: %d", queryTypeMapping.size()));
-        System.out.println(String.format("  Catalog URL to API URL mappings: %d", catalogToApiUrlMapping.size()));
     }
     
     /**
@@ -519,9 +505,6 @@ public class SearchUrlGenerator {
      * Тестирует разные варианты URL на выборке категорий и возвращает лучший
      */
     public void testAndSelectBestUrlVariant(Set<HttpCookie> cookies, int sampleSize) {
-        System.out.println("\n=== Testing different URL variants ===");
-        System.out.println("Testing on sample of " + sampleSize + " categories...");
-        
         // Создаем тестовые категории
         List<SearchUrlInfo> testCategories = new ArrayList<>();
         int count = 0;
@@ -546,7 +529,6 @@ public class SearchUrlGenerator {
         variants.add(new UrlVariant("old_dest_other", -8337854, "filters", false, true));
         
         // Добавляем новый правильный формат
-        System.out.println("\nTesting NEW format (correct WB format)...");
         List<SearchUrlInfo> newFormatUrls = new ArrayList<>();
         for (SearchUrlInfo original : testCategories) {
             String queryParam = buildQueryParam(original.categoryId, original.categoryName, original.queryType);
@@ -573,15 +555,9 @@ public class SearchUrlGenerator {
         // Восстанавливаем
         generatedUrls.clear();
         generatedUrls.addAll(originalUrls);
-        
-        System.out.println(String.format("  Valid: %d (%.2f%%)", newFormatStats.valid, newFormatStats.valid * 100.0 / newFormatStats.total));
-        System.out.println(String.format("  With products: %d (%.2f%%)", newFormatStats.urlsWithProducts, 
-            newFormatStats.urlsWithProducts * 100.0 / newFormatStats.total));
-        System.out.println(String.format("  Total products: %d", newFormatStats.totalProducts));
-        
+
         for (UrlVariant variant : variants) {
-            System.out.println("\nTesting variant: " + variant.name);
-            
+
             // Генерируем URL для тестовых категорий с этим вариантом
             List<SearchUrlInfo> testUrls = new ArrayList<>();
             for (SearchUrlInfo original : testCategories) {
