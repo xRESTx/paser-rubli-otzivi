@@ -368,18 +368,26 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Это позволяет запускать задачи с фиксированным интервалом, не дожидаясь завершения предыдущей
         // Интервал 15 секунд - достаточно для завершения большинства задач
         tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
-            try { 
-                mainOld(true, true); 
+            try {
+                log.info("Scheduled task mainOld(true, true) triggered at {}", System.currentTimeMillis());
+                mainOld(true, true);
+                log.info("Scheduled task mainOld(true, true) completed at {}", System.currentTimeMillis());
             } catch (Throwable t) {
+                log.error("Error in scheduled task mainOld(true, true): {}", t.getMessage(), t);
+                t.printStackTrace();
             }
-        }, 0, 6000, TimeUnit.SECONDS));
+        }, 0, 6, TimeUnit.SECONDS));
 
         tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
-            try { 
-                mainOld(false, true); 
+            try {
+                log.info("Scheduled task mainOld(false, true) triggered at {}", System.currentTimeMillis());
+                mainOld(false, true);
+                log.info("Scheduled task mainOld(false, true) completed at {}", System.currentTimeMillis());
             } catch (Throwable t) {
+                log.error("Error in scheduled task mainOld(false, true): {}", t.getMessage(), t);
+                t.printStackTrace();
             }
-        }, 5_000, 6000, TimeUnit.SECONDS));
+        }, 5, 6, TimeUnit.SECONDS));
     }
 
     private void stopTask(long chatId) {
@@ -480,8 +488,11 @@ public class MyDualBot extends TelegramLongPollingBot {
     public static void mainOld(boolean version, boolean reverse) {
         // Проверяем, не остановлена ли работа
         if (!running) {
+            log.debug("mainOld({}, {}) skipped - running is false", version, reverse);
             return;
         }
+        
+        log.info("mainOld({}, {}) started", version, reverse);
         
         // Используем cookies, полученные в main(), не обновляем их каждый раз
         // Обновление cookies может привести к блокировке (статус 498)
@@ -531,14 +542,19 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Это гарантирует, что мы используем актуальные категории
         try {
             urls = getURL();
+            log.info("Loaded {} categories from JSON", urls.size());
         } catch (Exception e) {
+            log.error("Error loading URLs from JSON: {}", e.getMessage());
             // Если не удалось загрузить URL, используем старый список или выходим
             if (urls == null || urls.isEmpty()) {
+                log.warn("No URLs available, skipping processing");
                 return;
             }
+            log.warn("Using cached URLs list");
         }
         
         if (urls.isEmpty()) {
+            log.warn("URLs list is empty, skipping processing");
             return;
         }
         
@@ -697,16 +713,39 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        
+        int pagesInQueue = pageQueue.size();
+        int categoriesProcessedCount = categoriesProcessed.get();
+        log.info("Discovery phase completed. Pages in queue: {}, Categories processed: {}, Total categories: {}", 
+                pagesInQueue, categoriesProcessedCount, halfUrls.size());
+        
+        // Если очередь пуста, значит все категории вернули ошибки или не имеют товаров
+        if (pagesInQueue == 0) {
+            log.warn("No pages to process! All categories may have returned errors or have no products.");
+            executorService.shutdown();
+            activeExecutors.remove(executorService);
+            activeExecutors.remove(discoveryService);
+            log.info("mainOld({}, {}) completed early - no pages to process", version, reverse);
+            return;
+        }
+        
         // Второй проход: обрабатываем все страницы из очереди параллельно
         // Каждый поток берет задачи из очереди до тех пор, пока она не пуста
         for (int t = 0; t < 300; t++) {
             executorService.submit(() -> {
                 try {
                     while (running) {
-                        PageTask task = pageQueue.poll(500, TimeUnit.MILLISECONDS);
+                        PageTask task = pageQueue.poll(5, TimeUnit.SECONDS);
                         if (task == null) {
-                            // Если очередь пуста более 500ms, завершаем поток
-                            break;
+                            // Если очередь пуста более 5 секунд, проверяем еще раз
+                            // Возможно, discovery phase еще добавляет задачи
+                            if (pageQueue.isEmpty() && discoveryService.isTerminated()) {
+                                // Если discovery завершился и очередь пуста, завершаем поток
+                                log.debug("Thread exiting - queue empty and discovery terminated");
+                                break;
+                            }
+                            // Иначе продолжаем ждать
+                            continue;
                         }
                         
                         // Проверяем флаг running перед обработкой задачи
@@ -863,36 +902,48 @@ public class MyDualBot extends TelegramLongPollingBot {
             return;
         }
         
-        // НЕ ждем завершения всех задач - позволяем следующему запуску начаться
-        // Задачи будут выполняться асинхронно
-        // Используем shutdown без awaitTermination, чтобы не блокировать следующий запуск
+        // Ждем завершения обработки всех страниц
+        // Discovery service уже завершен, теперь ждем завершения executor service
         discoveryService.shutdown();
         executorService.shutdown();
         
-        // Ждем только небольшое время, чтобы не блокировать следующий запуск
-        // Если задачи не завершились за это время, они продолжат выполняться в фоне
+        // Ждем завершения всех задач с таймаутом
+        // Это гарантирует, что все страницы будут обработаны
         try {
-            if (!discoveryService.awaitTermination(2, TimeUnit.SECONDS)) {
+            // Ждем завершения discovery service (он уже должен быть завершен)
+            if (!discoveryService.awaitTermination(10, TimeUnit.SECONDS)) {
+                log.warn("Discovery service did not terminate within timeout");
             }
-            if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
-                // Не принуждаем к завершению - задачи продолжат выполняться
-                // Это позволяет следующему mainOld запуститься параллельно
+            
+            // Ждем завершения executor service (обработка страниц)
+            // Таймаут зависит от количества страниц: минимум 30 секунд, максимум 5 минут
+            int timeoutSeconds = Math.max(30, Math.min(300, pagesInQueue / 100));
+            log.info("Waiting for executor service to complete (timeout: {}s, pages: {})", timeoutSeconds, pagesInQueue);
+            
+            if (!executorService.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)) {
+                log.warn("Executor service did not terminate within timeout ({}s). Some pages may not be processed.", timeoutSeconds);
+                // Не принуждаем к завершению - задачи продолжат выполняться в фоне
+            } else {
+                log.info("All pages processed successfully");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for tasks to complete");
         } finally {
-            // Удаляем из списка активных после завершения только если работа продолжается
-            // Если работа остановлена, удаление уже произошло выше
+            // Удаляем из списка активных после завершения
             if (running) {
                 activeExecutors.remove(discoveryService);
                 activeExecutors.remove(executorService);
             }
         }
+        
         if(version){
             numberPagesProcessed[0] = Integer.parseInt(String.valueOf(it));
         }else {
             numberPagesProcessed[1] = Integer.parseInt(String.valueOf(it));
         }
+        log.info("mainOld({}, {}) completed. Time: {}ms, Errors: {}, Processed: {}, Categories: {}", 
+                version, reverse, (System.currentTimeMillis() - startTime), i.get(), it.get(), halfUrls.size());
         System.out.println((System.currentTimeMillis() - startTime) + " " + i + " " + it + " " + halfUrls.size());
     }
 
