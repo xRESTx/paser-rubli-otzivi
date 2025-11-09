@@ -94,6 +94,8 @@ public class MyDualBot extends TelegramLongPollingBot {
     private static volatile boolean running = false;
     private static volatile boolean isFree = true;
     private static Set<HttpCookie> Cookies;
+    // Список всех активных ExecutorService для корректной остановки
+    private static final Set<ExecutorService> activeExecutors = ConcurrentHashMap.newKeySet();
     public static Set<String> pidory = ConcurrentHashMap.newKeySet();
     private final Set<Long> waitingForMessage = new HashSet<>();
     private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
@@ -413,13 +415,24 @@ public class MyDualBot extends TelegramLongPollingBot {
 //                0, 30, TimeUnit.SECONDS));
 
         // --- два парсера с «переключением» направления ---
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
-            try { mainOld(true,  true); } catch (Throwable t) { log.error("parser-v1", t); }
-        }, 0, 100, TimeUnit.MILLISECONDS));
+        // Используем scheduleAtFixedRate вместо scheduleWithFixedDelay
+        // Это позволяет запускать задачи с фиксированным интервалом, не дожидаясь завершения предыдущей
+        // Интервал 15 секунд - достаточно для завершения большинства задач
+        tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
+            try { 
+                mainOld(true, true); 
+            } catch (Throwable t) { 
+                log.error("parser-v1 error", t); 
+            }
+        }, 0, 15, TimeUnit.SECONDS));
 
-        tasks.add(SCHEDULER.scheduleWithFixedDelay(() -> {
-            try { mainOld(false, true); } catch (Throwable t) { log.error("parser-v2", t); }
-        }, 5_000, 100, TimeUnit.MILLISECONDS));
+        tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
+            try { 
+                mainOld(false, true); 
+            } catch (Throwable t) { 
+                log.error("parser-v2 error", t); 
+            }
+        }, 5_000, 15, TimeUnit.SECONDS));
     }
 
     private void stopTask(long chatId) {
@@ -444,6 +457,26 @@ public class MyDualBot extends TelegramLongPollingBot {
         queueFree.add("00");
 
         tasks.forEach(f -> f.cancel(false));
+
+        // Останавливаем все активные ExecutorService из mainOld
+        // Ждем завершения всех задач, а не принуждаем к завершению
+        log.info("Stopping {} active executors, waiting for tasks to complete", activeExecutors.size());
+        for (ExecutorService executor : activeExecutors) {
+            try {
+                executor.shutdown(); // Мягкое завершение - не принимаем новые задачи, но ждем завершения текущих
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    log.warn("Executor did not terminate within 60 seconds, forcing shutdown");
+                    executor.shutdownNow(); // Только если не завершился за 60 секунд
+                    if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                        log.error("Executor did not terminate even after forced shutdown");
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
+            }
+        }
+        activeExecutors.clear();
 
         SCHEDULER.shutdown();
 
@@ -502,6 +535,12 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     public static void mainOld(boolean version, boolean reverse) {
+        // Проверяем, не остановлена ли работа
+        if (!running) {
+            log.debug("mainOld skipped - running is false");
+            return;
+        }
+        
         // Используем cookies, полученные в main(), не обновляем их каждый раз
         // Обновление cookies может привести к блокировке (статус 498)
         if (Cookies == null || Cookies.isEmpty()) {
@@ -601,6 +640,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Каждая задача - это одна страница одной категории
         BlockingQueue<PageTask> pageQueue = new LinkedBlockingQueue<>();
         ExecutorService executorService = Executors.newFixedThreadPool(300);
+        activeExecutors.add(executorService);
         long startTime = System.currentTimeMillis();
         AtomicInteger i= new AtomicInteger();
         AtomicInteger it= new AtomicInteger();
@@ -622,11 +662,17 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         // Первый проход: получаем количество страниц для каждой категории и добавляем задачи в очередь
         ExecutorService discoveryService = Executors.newFixedThreadPool(50);
+        activeExecutors.add(discoveryService);
         AtomicInteger categoriesProcessed = new AtomicInteger(0);
         CountDownLatch discoveryLatch = new CountDownLatch(halfUrls.size());
         
         for (String[] url : halfUrls) {
             discoveryService.submit(() -> {
+                // Проверяем флаг running перед началом обработки
+                if (!running) {
+                    discoveryLatch.countDown();
+                    return;
+                }
                 try {
                     String shardKey = url[1];
                     String query = url[2];
@@ -725,10 +771,16 @@ public class MyDualBot extends TelegramLongPollingBot {
         for (int t = 0; t < 300; t++) {
             executorService.submit(() -> {
                 try {
-                    while (true) {
-                        PageTask task = pageQueue.poll(1, TimeUnit.SECONDS);
+                    while (running) {
+                        PageTask task = pageQueue.poll(500, TimeUnit.MILLISECONDS);
                         if (task == null) {
-                            break; // Очередь пуста
+                            // Если очередь пуста более 500ms, завершаем поток
+                            break;
+                        }
+                        
+                        // Проверяем флаг running перед обработкой задачи
+                        if (!running) {
+                            break;
                         }
                         
                         try {
@@ -777,6 +829,11 @@ public class MyDualBot extends TelegramLongPollingBot {
                                 for (HttpCookie cookie : Cookies) {
                                     connectionPage.cookie(cookie.getName(), cookie.getValue());
                                 }
+                            }
+                            
+                            // Проверяем флаг running перед выполнением запроса
+                            if (!running) {
+                                break;
                             }
                             
                             Connection.Response responsePage = connectionPage.execute();
@@ -836,20 +893,59 @@ public class MyDualBot extends TelegramLongPollingBot {
             });
         }
         
-        try {
-            // Ждем завершения всех задач
+        // Проверяем, не остановлена ли работа перед завершением
+        if (!running) {
+            // Если работа остановлена, мягко завершаем все задачи (ждем их завершения)
+            discoveryService.shutdown();
             executorService.shutdown();
-            if (!executorService.awaitTermination(10, TimeUnit.MINUTES)) {
-                log.warn("ExecutorService did not terminate within timeout, forcing shutdown");
-                executorService.shutdownNow();
-                if (!executorService.awaitTermination(1, TimeUnit.MINUTES)) {
-                    log.error("ExecutorService did not terminate after forced shutdown");
+            
+            // Ждем завершения всех задач
+            try {
+                if (!discoveryService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    log.warn("DiscoveryService did not terminate within 60 seconds, forcing shutdown");
+                    discoveryService.shutdownNow();
                 }
+                if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    log.warn("ExecutorService did not terminate within 60 seconds, forcing shutdown");
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                discoveryService.shutdownNow();
+                executorService.shutdownNow();
+            } finally {
+                activeExecutors.remove(discoveryService);
+                activeExecutors.remove(executorService);
+            }
+            return;
+        }
+        
+        // НЕ ждем завершения всех задач - позволяем следующему запуску начаться
+        // Задачи будут выполняться асинхронно
+        // Используем shutdown без awaitTermination, чтобы не блокировать следующий запуск
+        discoveryService.shutdown();
+        executorService.shutdown();
+        
+        // Ждем только небольшое время, чтобы не блокировать следующий запуск
+        // Если задачи не завершились за это время, они продолжат выполняться в фоне
+        try {
+            if (!discoveryService.awaitTermination(2, TimeUnit.SECONDS)) {
+                log.debug("DiscoveryService tasks still running, allowing next iteration to start");
+            }
+            if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                // Не принуждаем к завершению - задачи продолжат выполняться
+                // Это позволяет следующему mainOld запуститься параллельно
+                log.debug("ExecutorService tasks still running, allowing next iteration to start");
             }
         } catch (InterruptedException e) {
-            log.error("Interrupted while waiting for executor service to terminate", e);
-            executorService.shutdownNow();
             Thread.currentThread().interrupt();
+        } finally {
+            // Удаляем из списка активных после завершения только если работа продолжается
+            // Если работа остановлена, удаление уже произошло выше
+            if (running) {
+                activeExecutors.remove(discoveryService);
+                activeExecutors.remove(executorService);
+            }
         }
         if(version){
             numberPagesProcessed[0] = Integer.parseInt(String.valueOf(it));
