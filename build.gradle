@@ -29,3 +29,18 @@ test {
     useJUnitPlatform()
 }
 
+task collectCategoryJsons(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.CategoryJsonCollector'
+}
+
+task analyzeCategoryJsons(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.JsonAnalyzer'
+}
+
+task checkJsonParsing(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.JsonParserChecker'
+}
+

@@ -224,7 +224,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) {
                     SCHEDULER.shutdownNow();
                     if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) {
-                        log.error("Scheduler did not terminate");
                     }
                 }
             } catch (InterruptedException e) {
@@ -267,9 +266,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("100.txt", queue100, sentArticles100,"-1002340997107", 2,"-1002402655346");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender 100 interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender 100", t);
             }
         }));
 
@@ -280,9 +277,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("90.txt", queue90, sentArticles90, "-1002340997107", 4,"-1002446322077");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender 90 interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender 90", t);
             }
         }));
 
@@ -292,9 +287,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("80.txt", queue80, sentArticles80, "-1002340997107", 6,"-1002305962649");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender 80 interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender 80", t);
             }
         }));
 
@@ -306,9 +299,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("Big.txt", queueBig, sentArticlesBig, "-1002340997107", 13,"-1002290311759");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender Big interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender Big", t);
             }
         }));
 
@@ -319,9 +310,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("Food.txt", queueFood, sentArticlesFood, "-1002340997107", 89330,"-1002474423617");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender Food interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender Food", t);
             }
         }));
         //detyam
@@ -331,9 +320,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("detyam.txt", queueDetyam, sentArticlesDetyam, "-1002340997107", 255209,null);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender Food interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender Food", t);
             }
         }));
 
@@ -344,25 +331,9 @@ public class MyDualBot extends TelegramLongPollingBot {
                 runSender("_community.txt", queueMyChat, sentArticlesCommunity, "-1002397733938", 8,null);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Sender Community interrupted", e);
             } catch (Throwable t) {
-                log.error("Error in sender Community", t);
             }
         }));
-
-//        // StrippingLazarSent
-//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-//                () -> {
-//                    try {
-//                        MyDualBot.sentStrippingLazarSent();
-//                    } catch (InterruptedException e) {
-//                        Thread.currentThread().interrupt();
-//                        log.warn("Consumer StrippingLazarSent was interrupted, exiting", e);
-//                    } catch (Throwable t) {
-//                        log.error("Error in consumer StrippingLazarSent", t);
-//                    }
-//                },
-//                0, 500, TimeUnit.SECONDS));
 
         // Free
         tasks.add(SCHEDULER.scheduleWithFixedDelay(
@@ -371,9 +342,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                         MyDualBot.sentFree();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        log.warn("Consumer Free was interrupted, exiting", e);
                     } catch (Throwable t) {
-                        log.error("Error in consumer Free", t);
                     }
                 },
                 0, 5000, TimeUnit.SECONDS));
@@ -391,29 +360,9 @@ public class MyDualBot extends TelegramLongPollingBot {
                             return false;
                         });
                     } catch (Throwable t) {
-                        log.error("Error in strippingLazar cleaner", t);
                     }
                 },
                 0, 10, TimeUnit.SECONDS));
-
-//        tasks.add(SCHEDULER.scheduleWithFixedDelay(
-//                () -> {
-//                    try {
-//                        long now = System.currentTimeMillis();
-//                        mapOnSentFree.entrySet().removeIf(e -> {
-//                            long age = now - e.getValue();
-//                            if (age > TimeUnit.MINUTES.toMillis(8)) {
-//                                queueFree.add(e.getKey());
-//                                return true;
-//                            }
-//                            return false;
-//                        });
-//                    } catch (Throwable t) {
-//                        log.error("Error in Free cleaner", t);
-//                    }
-//                },
-//                0, 30, TimeUnit.SECONDS));
-
         // --- два парсера с «переключением» направления ---
         // Используем scheduleAtFixedRate вместо scheduleWithFixedDelay
         // Это позволяет запускать задачи с фиксированным интервалом, не дожидаясь завершения предыдущей
@@ -421,18 +370,16 @@ public class MyDualBot extends TelegramLongPollingBot {
         tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
             try { 
                 mainOld(true, true); 
-            } catch (Throwable t) { 
-                log.error("parser-v1 error", t); 
+            } catch (Throwable t) {
             }
-        }, 0, 15, TimeUnit.SECONDS));
+        }, 0, 6000, TimeUnit.SECONDS));
 
         tasks.add(SCHEDULER.scheduleAtFixedRate(() -> {
             try { 
                 mainOld(false, true); 
-            } catch (Throwable t) { 
-                log.error("parser-v2 error", t); 
+            } catch (Throwable t) {
             }
-        }, 5_000, 15, TimeUnit.SECONDS));
+        }, 5_000, 6000, TimeUnit.SECONDS));
     }
 
     private void stopTask(long chatId) {
@@ -460,15 +407,12 @@ public class MyDualBot extends TelegramLongPollingBot {
 
         // Останавливаем все активные ExecutorService из mainOld
         // Ждем завершения всех задач, а не принуждаем к завершению
-        log.info("Stopping {} active executors, waiting for tasks to complete", activeExecutors.size());
         for (ExecutorService executor : activeExecutors) {
             try {
                 executor.shutdown(); // Мягкое завершение - не принимаем новые задачи, но ждем завершения текущих
                 if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                    log.warn("Executor did not terminate within 60 seconds, forcing shutdown");
                     executor.shutdownNow(); // Только если не завершился за 60 секунд
                     if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                        log.error("Executor did not terminate even after forced shutdown");
                     }
                 }
             } catch (InterruptedException e) {
@@ -484,7 +428,6 @@ public class MyDualBot extends TelegramLongPollingBot {
             if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) { // Увеличил время ожидания до 60 секунд
                 SCHEDULER.shutdownNow();
                 if (!SCHEDULER.awaitTermination(60, TimeUnit.SECONDS)) { // Добавил еще одну проверку
-                    log.error("Scheduler did not terminate");
                 }
             }
         } catch (InterruptedException e) {
@@ -537,14 +480,12 @@ public class MyDualBot extends TelegramLongPollingBot {
     public static void mainOld(boolean version, boolean reverse) {
         // Проверяем, не остановлена ли работа
         if (!running) {
-            log.debug("mainOld skipped - running is false");
             return;
         }
         
         // Используем cookies, полученные в main(), не обновляем их каждый раз
         // Обновление cookies может привести к блокировке (статус 498)
         if (Cookies == null || Cookies.isEmpty()) {
-            log.warn("No cookies available! Attempting to get cookies...");
             // Пытаемся получить cookies только если их нет
             try {
                 String urlWb = "https://www.wildberries.ru/";
@@ -576,34 +517,14 @@ public class MyDualBot extends TelegramLongPollingBot {
                         cookie.setPath("/");
                         Cookies.add(cookie);
                     } catch (IllegalArgumentException e) {
-                        // Игнорируем некорректные cookies
-                        log.debug("Invalid cookie: {}={}", entry.getKey(), entry.getValue());
                     }
                 }
-                
-                // Логируем количество полученных cookies для отладки
-                log.info("Cookies obtained: {} cookies", Cookies.size());
-                if (Cookies.isEmpty()) {
-                    log.warn("No cookies obtained! This may cause 498 errors.");
-                } else {
-                    // Проверяем наличие важных cookies
-                    boolean hasWbauid = Cookies.stream().anyMatch(c -> c.getName().equals("_wbauid"));
-                    boolean hasWbaasToken = Cookies.stream().anyMatch(c -> c.getName().equals("x_wbaas_token"));
-                    log.info("Important cookies: _wbauid={}, x_wbaas_token={}", hasWbauid, hasWbaasToken);
-                }
             } catch (Exception e) {
-                log.error("Error getting cookies: {}", e.getMessage());
                 // Если не удалось получить cookies, используем пустой набор
                 if (Cookies == null) {
                     Cookies = new HashSet<>();
                 }
             }
-        } else {
-            log.info("Using existing cookies: {} cookies available", Cookies.size());
-            // Проверяем наличие важных cookies
-            boolean hasWbauid = Cookies.stream().anyMatch(c -> c.getName().equals("_wbauid"));
-            boolean hasWbaasToken = Cookies.stream().anyMatch(c -> c.getName().equals("x_wbaas_token"));
-            log.info("Important cookies check: _wbauid={}, x_wbaas_token={}", hasWbauid, hasWbaasToken);
         }
         
         // Обновляем список URL из JSON перед каждой обработкой
@@ -611,17 +532,13 @@ public class MyDualBot extends TelegramLongPollingBot {
         try {
             urls = getURL();
         } catch (Exception e) {
-            log.error("Error loading URLs from JSON: {}", e.getMessage());
             // Если не удалось загрузить URL, используем старый список или выходим
             if (urls == null || urls.isEmpty()) {
-                log.warn("No URLs available, skipping processing");
                 return;
             }
-            log.warn("Using cached URLs list");
         }
         
         if (urls.isEmpty()) {
-            log.warn("URLs list is empty, skipping processing");
             return;
         }
         
@@ -668,12 +585,12 @@ public class MyDualBot extends TelegramLongPollingBot {
         
         for (String[] url : halfUrls) {
             discoveryService.submit(() -> {
-                // Проверяем флаг running перед началом обработки
-                if (!running) {
-                    discoveryLatch.countDown();
-                    return;
-                }
                 try {
+                    // Проверяем флаг running перед началом обработки
+                    if (!running) {
+                        return;
+                    }
+                    
                     String shardKey = url[1];
                     String query = url[2];
                     String action = url[3];
@@ -690,13 +607,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                     queryParams.append("&sort=popular&spp=30");
                     
                     String firstPageUrl = "https://www.wildberries.ru/__internal/u-catalog/catalog/" + shardKey + "/v4/catalog?" + queryParams.toString();
-                    
-                    // Проверяем blackhole
-                    if ("blackhole".equals(shardKey)) {
-                        urls.remove(url);
-                        discoveryLatch.countDown();
-                        return;
-                    }
                     
                     String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0";
                     Connection connectionPage = Jsoup.connect(firstPageUrl)
@@ -726,15 +636,34 @@ public class MyDualBot extends TelegramLongPollingBot {
                     }
                     
                     Connection.Response responsePage = connectionPage.execute();
+                    int statusCode = responsePage.statusCode();
+                    
+                    // Пропускаем категории с ошибками
+                    if (statusCode == 429 || statusCode == 404 || statusCode == 498) {
+                        return;
+                    }
+                    
+                    if (statusCode != 200) {
+                        return;
+                    }
                     
                     String jsons = responsePage.body();
+                    if (jsons == null || jsons.trim().isEmpty()) {
+                        return;
+                    }
+                    
                     Gson gson = new Gson();
                     Data data = gson.fromJson(jsons, Data.class);
-                    int numberCells = data != null ? data.total : 0;
-
-                    if(numberCells == 0 || data == null || data.products == null){
-                        urls.remove(url);
-                        discoveryLatch.countDown();
+                    
+                    // Пропускаем категории с пустым ответом или без товаров
+                    if (data == null || data.products == null || data.products.isEmpty()) {
+                        return;
+                    }
+                    
+                    int numberCells = data.total;
+                    
+                    // Если total = 0, пропускаем категорию
+                    if (numberCells == 0) {
                         return;
                     }
 
@@ -755,6 +684,8 @@ public class MyDualBot extends TelegramLongPollingBot {
                 } catch (Exception e) {
                     // Игнорируем ошибки при получении количества страниц
                 } finally {
+                    // Всегда уменьшаем счетчик защелки, независимо от результата
+                    // Это гарантирует, что счетчик уменьшается ровно один раз для каждой задачи
                     discoveryLatch.countDown();
                 }
             });
@@ -850,6 +781,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                             }
                             
                             String jsons = responsePage.body();
+                            if (jsons == null || jsons.trim().isEmpty()) {
+                                continue;
+                            }
+                            
                             Gson gson = new Gson();
                             Data data = gson.fromJson(jsons, Data.class);
                             
@@ -862,8 +797,14 @@ public class MyDualBot extends TelegramLongPollingBot {
                                 String article = product.id != null ? product.id : "0";
                                 if (!newItem.contains(article)) {
                                     newItem.add(article);
+                                    
+                                    // Пропускаем товары с null или пустым feedbackPoints
+                                    if (product.feedbackPoints == null || product.feedbackPoints.isEmpty() || product.feedbackPoints.equals("0")) {
+                                        continue;
+                                    }
+                                    
                                     String itemName = product.name != null ? product.name : " ";
-                                    String feedBackSum = product.feedbackPoints != null ? product.feedbackPoints : "0";
+                                    String feedBackSum = product.feedbackPoints;
                                     String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
                                     String supplier = product.supplier != null ? product.supplier : " ";
                                     if(pidory.contains(supplier)){
@@ -877,6 +818,10 @@ public class MyDualBot extends TelegramLongPollingBot {
                                                 break;
                                             }
                                         }
+                                    }
+                                    // Пропускаем товары с нулевой ценой
+                                    if (total == 0) {
+                                        continue;
                                     }
                                     readTxtFile(itemName, String.valueOf(total), feedBackSum, article, totalQuery, url[0]);
                                 }
@@ -902,11 +847,9 @@ public class MyDualBot extends TelegramLongPollingBot {
             // Ждем завершения всех задач
             try {
                 if (!discoveryService.awaitTermination(60, TimeUnit.SECONDS)) {
-                    log.warn("DiscoveryService did not terminate within 60 seconds, forcing shutdown");
                     discoveryService.shutdownNow();
                 }
                 if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                    log.warn("ExecutorService did not terminate within 60 seconds, forcing shutdown");
                     executorService.shutdownNow();
                 }
             } catch (InterruptedException e) {
@@ -930,12 +873,10 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Если задачи не завершились за это время, они продолжат выполняться в фоне
         try {
             if (!discoveryService.awaitTermination(2, TimeUnit.SECONDS)) {
-                log.debug("DiscoveryService tasks still running, allowing next iteration to start");
             }
             if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
                 // Не принуждаем к завершению - задачи продолжат выполняться
                 // Это позволяет следующему mainOld запуститься параллельно
-                log.debug("ExecutorService tasks still running, allowing next iteration to start");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -1204,10 +1145,26 @@ public class MyDualBot extends TelegramLongPollingBot {
     }
 
     public static void readTxtFile(String itemName, String itemCost, String itemFeedBackCost, String article, String totalQuery, String category) throws IOException, InterruptedException {
+        // Проверка на null или пустой feedbackPoints
+        if (itemFeedBackCost == null || itemFeedBackCost.isEmpty() || itemFeedBackCost.equals("0")) {
+            return; // Пропускаем товары с null или нулевым feedbackPoints
+        }
+        
         if(Objects.equals(itemCost,"0")){
             itemCost = String.valueOf(hasFeedbackPoints(article));
+            // Если не удалось получить цену, пропускаем товар
+            if (itemCost == null || itemCost.equals("0") || itemCost.equals("0.0")) {
+                return;
+            }
         }
-        double percent = Double.parseDouble(itemFeedBackCost) / Double.parseDouble(itemCost);
+        
+        // Проверка на деление на ноль
+        double costValue = Double.parseDouble(itemCost);
+        if (costValue == 0) {
+            return; // Пропускаем товары с нулевой ценой
+        }
+        
+        double percent = Double.parseDouble(itemFeedBackCost) / costValue;
         ProductInfo productInfo = new ProductInfo();
         Double old100 = sentArticles100.getIfPresent(article);
         Double old90  = sentArticles90.getIfPresent(article);
@@ -1349,7 +1306,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                 }
             }
         } catch (IOException e) {
-            log.error("Error in sender {}", fileName, e);
             e.printStackTrace();
         }
     }
@@ -1571,20 +1527,13 @@ public class MyDualBot extends TelegramLongPollingBot {
         
         // Проверяем статус код
         int statusCode = response.statusCode();
-        if (statusCode != 200) {
-            log.error("Error fetching JSON: Status {} - Response: {}", statusCode, json.length() > 200 ? json.substring(0, 200) : json);
-            throw new IOException("HTTP error: " + statusCode);
-        }
-        
         // Проверяем, что ответ действительно JSON (начинается с { или [)
         if (json == null || json.trim().isEmpty()) {
-            log.error("Empty response from JSON endpoint");
             throw new IOException("Empty response from JSON endpoint");
         }
         
         String trimmedJson = json.trim();
         if (!trimmedJson.startsWith("{") && !trimmedJson.startsWith("[")) {
-            log.error("Response is not JSON. First 500 chars: {}", json.length() > 500 ? json.substring(0, 500) : json);
             throw new IOException("Response is not JSON. Status: " + statusCode);
         }
 
@@ -1734,7 +1683,6 @@ public class MyDualBot extends TelegramLongPollingBot {
                         toRemove.add(article);
                     }
                 } catch (IOException e) {
-                    log.error("Check failed for {}", article, e);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
