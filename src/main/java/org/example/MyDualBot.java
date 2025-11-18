@@ -316,7 +316,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         tasks.add(SCHEDULER.submit(() ->
         {
             try {
-                runSender("detyam.txt", queueDetyam, sentArticlesDetyam, "-1002340997107", 255209,"-1003412611600");
+                runSender("detyam.txt", queueDetyam, sentArticlesDetyam, "-1002340997107", 255209,"-1002805053383");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Throwable t) {
