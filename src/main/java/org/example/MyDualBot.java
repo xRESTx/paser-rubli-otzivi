@@ -14,6 +14,7 @@ import com.pengrad.telegrambot.response.SendResponse;
 import org.example.jsonmodel.Data;
 import org.example.jsonmodel.Product;
 import org.example.jsonmodel.Root;
+import org.example.jsonmodel.SearchResponse;
 import org.example.jsonmodel.Size;
 import org.example.jsonmodel.UrlFetcher;
 import org.jsoup.Connection;
@@ -45,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static java.nio.file.StandardOpenOption.*;
@@ -96,6 +98,7 @@ public class MyDualBot extends TelegramLongPollingBot {
     // Список всех активных ExecutorService для корректной остановки
     private static final Set<ExecutorService> activeExecutors = ConcurrentHashMap.newKeySet();
     public static Set<String> pidory = ConcurrentHashMap.newKeySet();
+    private static final Pattern SELLER_URL_PATTERN = Pattern.compile("https?://(?:www\\.)?wildberries\\.ru/seller/(\\d+)", Pattern.CASE_INSENSITIVE);
     private final Set<Long> waitingForMessage = new HashSet<>();
     private final List<String> admin = new ArrayList<>(Arrays.asList("1027094894", "1039378955","5392268853"));
     private final List<String> worker = new ArrayList<>(Arrays.asList("466086607","1039378955"));
@@ -136,13 +139,29 @@ public class MyDualBot extends TelegramLongPollingBot {
 
             if(admin.contains(String.valueOf(chatId))){
                 if (waitingForMessage.contains(chatId)) {
-                    try (BufferedWriter reader = new BufferedWriter(new FileWriter("pidory.txt", true))) {
-                        pidory.add(messageText);
-                        reader.write("\n" + messageText);
+                    String normalized = normalizeBlockedSupplierInput(messageText);
+                    if (normalized == null) {
+                        sendPengradMessage(String.valueOf(chatId), "Не удалось распознать продавца. Пришли имя или ссылку вида https://www.wildberries.ru/seller/ID");
+                        return;
+                    }
+                    if (pidory.contains(normalized)) {
+                        sendPengradMessage(String.valueOf(chatId), "Этот продавец уже заблокирован.");
+                        waitingForMessage.remove(chatId);
+                        return;
+                    }
+                    File pidoryFile = new File("pidory.txt");
+                    try (BufferedWriter writer = new BufferedWriter(new FileWriter(pidoryFile, true))) {
+                        if (pidoryFile.exists() && pidoryFile.length() > 0) {
+                            writer.write(System.lineSeparator());
+                        }
+                        writer.write(normalized);
+                        pidory.add(normalized);
                     } catch (IOException e) {
                         e.printStackTrace();
+                        sendPengradMessage(String.valueOf(chatId), "Не удалось сохранить продавца.");
+                        return;
                     }
-                    sendPengradMessage(String.valueOf(chatId),  "The text is written to a file!");
+                    sendPengradMessage(String.valueOf(chatId),  "Продавец добавлен в блок-лист.");
                     waitingForMessage.remove(chatId); // Убираем из режима ожидания
                     return;
                 }
@@ -610,24 +629,26 @@ public class MyDualBot extends TelegramLongPollingBot {
                     
                     String firstPageUrl = "https://www.wildberries.ru/__internal/u-catalog/catalog/" + shardKey + "/v4/catalog?" + queryParams.toString();
                     
-                    String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0";
+                    // Используем Firefox User-Agent точно как в браузере
+                    String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0";
                     Connection connectionPage = Jsoup.connect(firstPageUrl)
                             .userAgent(userAgent)
                             .header("Accept", "*/*")
                             .header("Accept-Language", "en-US,en;q=0.5")
-                            .header("Referer", url[0])
-                            .header("Origin", "https://www.wildberries.ru")
+                            .header("Accept-Encoding", "gzip, deflate")  // Только gzip и deflate, Jsoup не поддерживает br и zstd
+                            .header("Referer", url[0])  // Конкретный URL категории как в браузере
+                            .header("Connection", "keep-alive")
                             .header("Sec-Fetch-Dest", "empty")
                             .header("Sec-Fetch-Mode", "cors")
                             .header("Sec-Fetch-Site", "same-origin")
-                            .header("TE", "trailers")
                             .header("Priority", "u=4")
+                            .header("TE", "trailers")
                             .header("x-requested-with", "XMLHttpRequest")
-                            .header("x-spa-version", "13.12.0")
+                            .header("x-spa-version", "13.14.1")  // Обновленная версия
                             .header("deviceid", "site_2bc3dd7d2f1a4eb28539e17ff17c894a")
                             .method(Connection.Method.GET)
                             .ignoreContentType(true)
-                            .timeout(20_000)
+                            .timeout(30_000)
                             .followRedirects(true)
                             .maxBodySize(0);
 
@@ -641,11 +662,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     int statusCode = responsePage.statusCode();
                     
                     // Пропускаем категории с ошибками
-                    if (statusCode == 429 || statusCode == 404 || statusCode == 498) {
-                        return;
-                    }
-                    
-                    if (statusCode != 200) {
+                    if (statusCode == 429 || statusCode == 404 || statusCode == 498 || statusCode != 200) {
                         return;
                     }
                     
@@ -655,14 +672,75 @@ public class MyDualBot extends TelegramLongPollingBot {
                     }
                     
                     Gson gson = new Gson();
-                    Data data = gson.fromJson(jsons, Data.class);
+                    Data data = null;
+                    int numberCells = 0;
+                    
+                    // Пробуем парсить как Data (с total или без)
+                    try {
+                        data = gson.fromJson(jsons, Data.class);
+                        if (data != null && data.products != null && !data.products.isEmpty()) {
+                            // Если total > 0, используем его (это правильное значение)
+                            if (data.total > 0) {
+                                numberCells = data.total;
+                            } else {
+                                // Если total = 0 или отсутствует, используем размер products
+                                numberCells = data.products.size();
+                                // Если получили 100 товаров, значит могут быть еще страницы
+                                if (numberCells == 100) {
+                                    // Устанавливаем большое число, чтобы парсить все страницы
+                                    numberCells = 10000; // Максимум страниц для парсинга
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Пробуем парсить как Root (с оберткой data)
+                        try {
+                            Root root = gson.fromJson(jsons, Root.class);
+                            if (root != null && root.data != null) {
+                                data = root.data;
+                                if (data.total == 0 && data.products != null && !data.products.isEmpty()) {
+                                    numberCells = data.products.size();
+                                    if (numberCells == 100) {
+                                        numberCells = 10000;
+                                    }
+                                } else {
+                                    numberCells = data.total;
+                                }
+                            }
+                        } catch (Exception e2) {
+                            // Пробуем парсить как простой объект с products (с total или без)
+                            try {
+                                JsonObject jsonObject = gson.fromJson(jsons, JsonObject.class);
+                                if (jsonObject != null && jsonObject.has("products")) {
+                                    JsonArray productsArray = jsonObject.getAsJsonArray("products");
+                                    if (productsArray != null && productsArray.size() > 0) {
+                                        // Создаем Data объект для совместимости
+                                        data = new Data();
+                                        data.products = gson.fromJson(productsArray, new com.google.gson.reflect.TypeToken<List<Product>>(){}.getType());
+                                        
+                                        // Проверяем, есть ли total в JSON
+                                        if (jsonObject.has("total") && !jsonObject.get("total").isJsonNull()) {
+                                            numberCells = jsonObject.get("total").getAsInt();
+                                        } else {
+                                            // Если total отсутствует, используем размер products
+                                            numberCells = data.products.size();
+                                            // Если получили 100 товаров, значит могут быть еще страницы
+                                            if (numberCells == 100) {
+                                                numberCells = 10000; // Максимум страниц для парсинга
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (Exception e3) {
+                                return;
+                            }
+                        }
+                    }
                     
                     // Пропускаем категории с пустым ответом или без товаров
                     if (data == null || data.products == null || data.products.isEmpty()) {
                         return;
                     }
-                    
-                    int numberCells = data.total;
                     
                     // Если total = 0, пропускаем категорию
                     if (numberCells == 0) {
@@ -677,6 +755,11 @@ public class MyDualBot extends TelegramLongPollingBot {
                         totalPage = numberCells / 100 + 1;
                     }
                     
+                    // Ограничиваем максимальное количество страниц для нового формата
+                    if (totalPage > 100) {
+                        totalPage = 100; // Максимум 100 страниц
+                    }
+                    
                     // Добавляем все страницы этой категории в очередь
                     for (int pageNum = 1; pageNum <= totalPage; pageNum++) {
                         pageQueue.offer(new PageTask(url, pageNum));
@@ -684,7 +767,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     
                     categoriesProcessed.incrementAndGet();
                 } catch (Exception e) {
-                    // Игнорируем ошибки при получении количества страниц
+                    // Игнорируем ошибки для ускорения
                 } finally {
                     // Всегда уменьшаем счетчик защелки, независимо от результата
                     // Это гарантирует, что счетчик уменьшается ровно один раз для каждой задачи
@@ -701,17 +784,12 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
         
         int pagesInQueue = pageQueue.size();
-        int categoriesProcessedCount = categoriesProcessed.get();
-        log.info("Discovery phase completed. Pages in queue: {}, Categories processed: {}, Total categories: {}", 
-                pagesInQueue, categoriesProcessedCount, halfUrls.size());
         
         // Если очередь пуста, значит все категории вернули ошибки или не имеют товаров
         if (pagesInQueue == 0) {
-            log.warn("No pages to process! All categories may have returned errors or have no products.");
             executorService.shutdown();
             activeExecutors.remove(executorService);
             activeExecutors.remove(discoveryService);
-            log.info("mainOld({}, {}) completed early - no pages to process", version, reverse);
             return;
         }
         
@@ -724,13 +802,9 @@ public class MyDualBot extends TelegramLongPollingBot {
                         PageTask task = pageQueue.poll(5, TimeUnit.SECONDS);
                         if (task == null) {
                             // Если очередь пуста более 5 секунд, проверяем еще раз
-                            // Возможно, discovery phase еще добавляет задачи
                             if (pageQueue.isEmpty() && discoveryService.isTerminated()) {
-                                // Если discovery завершился и очередь пуста, завершаем поток
-                                log.debug("Thread exiting - queue empty and discovery terminated");
                                 break;
                             }
-                            // Иначе продолжаем ждать
                             continue;
                         }
                         
@@ -760,24 +834,26 @@ public class MyDualBot extends TelegramLongPollingBot {
                             
                             String currentPage = "https://www.wildberries.ru/__internal/u-catalog/catalog/" + shardKey + "/v4/catalog?" + queryParams.toString();
                             
-                            String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0";
+                            // Используем Firefox User-Agent точно как в браузере
+                            String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0";
                             Connection connectionPage = Jsoup.connect(currentPage)
                                     .userAgent(userAgent)
                                     .header("Accept", "*/*")
                                     .header("Accept-Language", "en-US,en;q=0.5")
-                                    .header("Referer", url[0])
-                                    .header("Origin", "https://www.wildberries.ru")
+                                    .header("Accept-Encoding", "gzip, deflate")  // Только gzip и deflate, Jsoup не поддерживает br и zstd
+                                    .header("Referer", url[0])  // Конкретный URL категории как в браузере
+                                    .header("Connection", "keep-alive")
                                     .header("Sec-Fetch-Dest", "empty")
                                     .header("Sec-Fetch-Mode", "cors")
                                     .header("Sec-Fetch-Site", "same-origin")
-                                    .header("TE", "trailers")
                                     .header("Priority", "u=4")
+                                    .header("TE", "trailers")
                                     .header("x-requested-with", "XMLHttpRequest")
-                                    .header("x-spa-version", "13.12.0")
+                                    .header("x-spa-version", "13.14.1")  // Обновленная версия
                                     .header("deviceid", "site_2bc3dd7d2f1a4eb28539e17ff17c894a")
                                     .method(Connection.Method.GET)
                                     .ignoreContentType(true)
-                                    .timeout(20_000)
+                                    .timeout(30_000)
                                     .followRedirects(true)
                                     .maxBodySize(0);
 
@@ -811,7 +887,41 @@ public class MyDualBot extends TelegramLongPollingBot {
                             }
                             
                             Gson gson = new Gson();
-                            Data data = gson.fromJson(jsons, Data.class);
+                            Data data = null;
+                            
+                            // Пробуем парсить как Data (может быть с total или без)
+                            try {
+                                data = gson.fromJson(jsons, Data.class);
+                                // Если total = 0, но есть products, это нормально - просто нет total в ответе
+                                if (data != null && data.products == null) {
+                                    data = null; // Сбрасываем, если products отсутствует
+                                }
+                            } catch (Exception e) {
+                                // Пробуем парсить как Root (с оберткой data)
+                                try {
+                                    Root root = gson.fromJson(jsons, Root.class);
+                                    if (root != null && root.data != null) {
+                                        data = root.data;
+                                    }
+                                } catch (Exception e2) {
+                                    // Пробуем парсить как простой объект с products (без total)
+                                    try {
+                                        JsonObject jsonObject = gson.fromJson(jsons, JsonObject.class);
+                                        if (jsonObject != null && jsonObject.has("products")) {
+                                            JsonArray productsArray = jsonObject.getAsJsonArray("products");
+                                            if (productsArray != null && productsArray.size() > 0) {
+                                                // Создаем Data объект для совместимости
+                                                data = new Data();
+                                                data.products = gson.fromJson(productsArray, new com.google.gson.reflect.TypeToken<List<Product>>(){}.getType());
+                                                data.total = 0; // total отсутствует в ответе
+                                            }
+                                        }
+                                    } catch (Exception e3) {
+                                        // Игнорируем ошибки парсинга
+                                        continue;
+                                    }
+                                }
+                            }
                             
                             if(data == null || data.products == null){
                                 continue;
@@ -832,7 +942,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                                     String feedBackSum = product.feedbackPoints;
                                     String totalQuery = product.totalQuantity != null ? product.totalQuantity : "0";
                                     String supplierRaw = product.supplier != null ? product.supplier.trim() : "";
-                                    if(pidory.contains(supplierRaw)){
+                                    if(isSupplierBlocked(supplierRaw, product.supplierId)){
                                         continue;
                                     }
                                     int total = 0;
@@ -896,25 +1006,14 @@ public class MyDualBot extends TelegramLongPollingBot {
         // Ждем завершения всех задач с таймаутом
         // Это гарантирует, что все страницы будут обработаны
         try {
-            // Ждем завершения discovery service (он уже должен быть завершен)
-            if (!discoveryService.awaitTermination(10, TimeUnit.SECONDS)) {
-                log.warn("Discovery service did not terminate within timeout");
-            }
+            // Ждем завершения discovery service
+            discoveryService.awaitTermination(10, TimeUnit.SECONDS);
             
             // Ждем завершения executor service (обработка страниц)
-            // Таймаут зависит от количества страниц: минимум 30 секунд, максимум 5 минут
             int timeoutSeconds = Math.max(30, Math.min(300, pagesInQueue / 100));
-            log.info("Waiting for executor service to complete (timeout: {}s, pages: {})", timeoutSeconds, pagesInQueue);
-            
-            if (!executorService.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)) {
-                log.warn("Executor service did not terminate within timeout ({}s). Some pages may not be processed.", timeoutSeconds);
-                // Не принуждаем к завершению - задачи продолжат выполняться в фоне
-            } else {
-                log.info("All pages processed successfully");
-            }
+            executorService.awaitTermination(timeoutSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("Interrupted while waiting for tasks to complete");
         } finally {
             // Удаляем из списка активных после завершения
             if (running) {
@@ -963,6 +1062,48 @@ public class MyDualBot extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
         return sentArticles;
+    }
+
+    private static boolean isSupplierBlocked(String supplierName, Long supplierId) {
+        if (supplierName != null && !supplierName.isEmpty()) {
+            String normalizedName = supplierName.toLowerCase(Locale.ROOT);
+            if (pidory.contains(normalizedName)) {
+                return true;
+            }
+        }
+        if (supplierId != null) {
+            if (pidory.contains(String.valueOf(supplierId))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeBlockedSupplierInput(String rawInput) {
+        if (rawInput == null) {
+            return null;
+        }
+        String trimmed = rawInput.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        Matcher matcher = SELLER_URL_PATTERN.matcher(trimmed);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        if (isDigitsOnly(trimmed)) {
+            return trimmed;
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isDigitsOnly(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void readSentArticlesToCache(String filePath, Cache<String, Double> cache) {
@@ -1104,7 +1245,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                     gaTXRZMJQDFE.setPath("/");
                     Cookies.add(gaTXRZMJQDFE);
                     
-                    HttpCookie wbaasToken = new HttpCookie("x_wbaas_token", "1.1000.005c5fe06b83419cbf1c1bd1da4d8295.MHwxODUuOTIuMTM5LjEzNnxNb3ppbGxhLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0OyBydjoxNDMuMCkgR2Vja28vMjAxMDAxMDEgRmlyZWZveC8xNDMuMHwxNzYzNzQxODg0fHJldXNhYmxlfDJ8ZXlKb1lYTm9Jam9pSW4wPXwwfDN8MTc2MzEzNzA4NA==.MEQCICLQJ0JKUSrfi4cvtmBS9pftMrhnf0vrvWC26H2ii/NwAiABM+wG0h2dLn4qM2aBB5BeBNMIbBOAQ8JYffIrvI9wMg==");
+                    HttpCookie wbaasToken = new HttpCookie("x_wbaas_token", "1.1000.9022fb5a595443238874a145085e8d4f.MHwxODUuOTIuMTM5LjEzMnxNb3ppbGxhLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0OyBydjoxNDUuMCkgR2Vja28vMjAxMDAxMDEgRmlyZWZveC8xNDUuMHwxNzY1MDA2MDAwfHJldXNhYmxlfDJ8ZXlKb1lYTm9Jam9pSW4wPXwwfDN8MTc2NDQwMTIwMHwx.MEUCIQCxem6QECUgij5vfak3FA6Xfg/9P2vzbpfcLsXWGrE6OgIgLH1D9boQ3KSFudFPXgN+tPfK5kUmm7babDJtIhkh7hg=");
                     wbaasToken.setDomain(".wildberries.ru");
                     wbaasToken.setPath("/");
                     Cookies.add(wbaasToken);
@@ -1220,11 +1361,12 @@ public class MyDualBot extends TelegramLongPollingBot {
         Double oldDetyam = sentArticlesDetyam.getIfPresent(article);
 //        Double tests = test.getIfPresent(article);
         boolean absent = old100 == null && old90 == null && old80 == null && oldBig == null;
+        final double RESEND_THRESHOLD = 0.15;
         boolean changed =
-                (old100 != null && Math.abs(old100 - percent) > 0.1) ||
-                        (old90  != null && Math.abs(old90  - percent) > 0.1) ||
-                        (old80  != null && Math.abs(old80  - percent) > 0.1) ||
-                        (oldBig != null && Math.abs(oldBig - percent) > 0.1);
+                (old100 != null && Math.abs(old100 - percent) > RESEND_THRESHOLD) ||
+                        (old90  != null && Math.abs(old90  - percent) > RESEND_THRESHOLD) ||
+                        (old80  != null && Math.abs(old80  - percent) > RESEND_THRESHOLD) ||
+                        (oldBig != null && Math.abs(oldBig - percent) > RESEND_THRESHOLD);
 //        if(tests == null || Math.abs(tests - percent) > 0.01){
 //            try (BufferedWriter writer = Files.newBufferedWriter(Path.of("test.txt"), CREATE, APPEND)) {
 //                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
@@ -1265,7 +1407,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 mapOnSent.put(article, productInfo);
             }
         }
-        if (oldCommunity == null || Math.abs(oldCommunity - percent) > 0.1) {
+        if (oldCommunity == null || Math.abs(oldCommunity - percent) > RESEND_THRESHOLD) {
             String message;
 
             if (percent >= 1.5 || (Double.parseDouble(itemFeedBackCost) - Double.parseDouble(itemCost) >= 199 && percent > 1)) {
@@ -1277,7 +1419,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 queueMyChat.add(message);
             }
         }
-        if((oldFood==null || Math.abs(oldFood - percent) > 0.1) && urlsFood.contains(category)){
+        if((oldFood==null || Math.abs(oldFood - percent) > RESEND_THRESHOLD) && urlsFood.contains(category)){
             String message;
 
             if (percent >= 0.45) {
@@ -1290,7 +1432,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 mapOnSent.put(article, productInfo);
             }
         }
-        if((oldDetyam==null || Math.abs(oldDetyam - percent) > 0.1) && urlsDetyam.contains(category)){
+        if((oldDetyam==null || Math.abs(oldDetyam - percent) > RESEND_THRESHOLD) && urlsDetyam.contains(category)){
             String message;
 
             if (percent >= 0.5) {
@@ -1723,7 +1865,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 try {
                     double actual = hasFeedbackPoints(article);
                     Double stored = cache.getIfPresent(article);
-                    if (stored == null || Math.abs(actual - stored) > 0.1) {
+                    if (stored == null || Math.abs(actual - stored) > 0.15) {
                         toRemove.add(article);
                     }
                 } catch (IOException e) {

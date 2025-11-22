@@ -12,4 +12,5 @@ public class Product {
     public String totalQuantity;       // общее количество
     public List<Size> sizes;           // размеры/варианты товара
     public String supplier;            // поставщик (если понадобится)
+    public Long supplierId;            // числовой идентификатор поставщика
 }
