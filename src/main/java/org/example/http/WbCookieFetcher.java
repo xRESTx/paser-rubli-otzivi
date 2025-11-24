@@ -139,7 +139,7 @@ public final class WbCookieFetcher {
     }
     
     private static String resolveFirefoxBinary() {
-        // 1. System property
+        // 1. System property (высший приоритет)
         String sysProp = System.getProperty("firefox.binary");
         if (sysProp != null && !sysProp.isBlank()) {
             Path path = Path.of(sysProp);
@@ -161,11 +161,44 @@ public final class WbCookieFetcher {
                 log.warn("Firefox path from environment variable does not exist: {}", env);
             }
         }
-        // 3. Common install paths (prioritize standard Program Files location)
-        String[] defaultPaths = {
-                "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
-                "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"
-        };
+        // 3. Проверяем, есть ли firefox в PATH
+        try {
+            Process process = new ProcessBuilder("which", "firefox").start();
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()))) {
+                    String path = reader.readLine();
+                    if (path != null && !path.isBlank()) {
+                        Path firefoxPath = Path.of(path.trim());
+                        if (Files.exists(firefoxPath)) {
+                            log.debug("Found Firefox in PATH: {}", firefoxPath);
+                            return firefoxPath.toString();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Failed to find Firefox in PATH: {}", e.getMessage());
+        }
+        // 4. Common install paths (Linux)
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        String[] defaultPaths;
+        if (osName.contains("win")) {
+            // Windows paths
+            defaultPaths = new String[]{
+                    "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+                    "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"
+            };
+        } else {
+            // Linux/Unix paths
+            defaultPaths = new String[]{
+                    "/usr/bin/firefox",
+                    "/usr/local/bin/firefox",
+                    "/opt/firefox/firefox",
+                    "/snap/bin/firefox"
+            };
+        }
         for (String pathStr : defaultPaths) {
             Path path = Path.of(pathStr);
             if (Files.exists(path)) {
@@ -175,9 +208,10 @@ public final class WbCookieFetcher {
                 log.trace("Firefox not found at: {}", pathStr);
             }
         }
-        // 4. Cached selenium downloads (e.g., user-provided path)
+        // 5. Cached selenium downloads
+        String cacheSubdir = osName.contains("win") ? "win64" : "linux64";
         Path cacheDir = Path.of(System.getProperty("user.home"),
-                ".cache", "selenium", "firefox", "win64");
+                ".cache", "selenium", "firefox", cacheSubdir);
         if (Files.exists(cacheDir) && Files.isDirectory(cacheDir)) {
             try {
                 Path latest = Files.list(cacheDir)
@@ -185,7 +219,8 @@ public final class WbCookieFetcher {
                         .max(Comparator.comparing(Path::getFileName))
                         .orElse(null);
                 if (latest != null) {
-                    Path candidate = latest.resolve("firefox.exe");
+                    String binaryName = osName.contains("win") ? "firefox.exe" : "firefox";
+                    Path candidate = latest.resolve(binaryName);
                     if (Files.exists(candidate)) {
                         log.debug("Found Firefox in Selenium cache: {}", candidate);
                         return candidate.toString();

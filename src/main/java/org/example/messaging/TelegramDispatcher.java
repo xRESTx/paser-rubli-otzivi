@@ -9,6 +9,7 @@ import com.pengrad.telegrambot.response.SendResponse;
 import org.example.http.WbHttpClient;
 import org.example.jsonmodel.DetailProduct;
 import org.example.jsonmodel.DetailResponse;
+import org.example.service.SentCache;
 import org.example.storage.SqliteStorage;
 import org.example.storage.records.SentRecord;
 import org.slf4j.Logger;
@@ -42,6 +43,7 @@ public final class TelegramDispatcher {
     private final WbHttpClient httpClient;
     private final Map<String, String> sessionCookies;
     private final MessageFormatter messageFormatter;
+    private final SentCache sentCache;
     private ExecutorService executor;
     private ExecutorService delayedSenderExecutor;
     private final ConcurrentLinkedQueue<DelayedMessage> delayedQueue = new ConcurrentLinkedQueue<>();
@@ -54,7 +56,8 @@ public final class TelegramDispatcher {
                               int workerCount,
                               WbHttpClient httpClient,
                               Map<String, String> sessionCookies,
-                              MessageFormatter messageFormatter) {
+                              MessageFormatter messageFormatter,
+                              SentCache sentCache) {
         this.telegramBot = telegramBot;
         this.queue = queue;
         this.storage = storage;
@@ -62,6 +65,7 @@ public final class TelegramDispatcher {
         this.httpClient = httpClient;
         this.sessionCookies = sessionCookies;
         this.messageFormatter = messageFormatter;
+        this.sentCache = sentCache;
     }
     
     private static class DelayedMessage {
@@ -166,24 +170,38 @@ public final class TelegramDispatcher {
                     DelayedMessage delayed = iterator.next();
                     if (delayed.isReady()) {
                         iterator.remove();
-                        // Проверяем товар перед отправкой в бесплатный чат и обновляем сообщение
-                        OutgoingMessage messageToSend = delayed.message;
+                        // Для FREE канала: проверка shouldRoute и отправка полностью асинхронны, не блокируют поток
                         if (delayed.message.getChannelType() == org.example.service.ChannelType.FREE) {
-                            OutgoingMessage verifiedMessage = verifyAndUpdateMessage(delayed.message);
-                            if (verifiedMessage == null) {
-                                continue;
-                            }
-                            messageToSend = verifiedMessage;
+                            final OutgoingMessage originalMessage = delayed.message;
+                            delayedSenderExecutor.submit(() -> {
+                                try {
+                                    // Проверяем shouldRoute здесь, а не в потоке парсера
+                                    if (!shouldRoute(originalMessage)) {
+                                        return;
+                                    }
+                                    OutgoingMessage verifiedMessage = verifyAndUpdateMessage(originalMessage);
+                                    if (verifiedMessage == null) {
+                                        return;
+                                    }
+                                    sendImmediate(verifiedMessage);
+                                } catch (Exception e) {
+                                    // Не логируем таймауты HTTP - это нормальная ситуация
+                                    if (!isTimeoutException(e)) {
+                                        log.warn("FREE channel send failed for {}: {}", originalMessage.getArticle(), e.getMessage());
+                                    }
+                                }
+                            });
+                        } else {
+                            // Для остальных каналов - просто отправляем
+                            final OutgoingMessage finalMessage = delayed.message;
+                            delayedSenderExecutor.submit(() -> {
+                                try {
+                                    sendImmediate(finalMessage);
+                                } catch (Exception e) {
+                                    log.error("Failed to send delayed message", e);
+                                }
+                            });
                         }
-                        // Отправляем в отдельном потоке, чтобы не блокировать поток проверки
-                        final OutgoingMessage finalMessage = messageToSend;
-                        delayedSenderExecutor.submit(() -> {
-                            try {
-                                sendImmediate(finalMessage);
-                            } catch (Exception e) {
-                                log.error("Failed to send delayed message", e);
-                            }
-                        });
                     }
                 }
             } catch (InterruptedException e) {
@@ -282,7 +300,6 @@ public final class TelegramDispatcher {
             }
             return updatedMessage;
         } catch (Exception e) {
-            log.warn("Failed to verify product {} before sending: {}", message.getArticle(), e.getMessage());
             return null;
         }
     }
@@ -427,6 +444,31 @@ public final class TelegramDispatcher {
         }
     }
 
+    private boolean shouldRoute(OutgoingMessage message) {
+        return sentCache.shouldSend(
+                message.getArticle(),
+                message.getChannelType(),
+                message.getPercent(),
+                0.15, // resendThreshold
+                message.getPrice(),
+                0.15  // priceResendThreshold
+        );
+    }
+    
+    private boolean isTimeoutException(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        String message = e.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase();
+            if (lower.contains("timeout") || lower.contains("timed out") || lower.contains("connect timed")) {
+                return true;
+            }
+        }
+        return isTimeoutException(e.getCause());
+    }
+    
     private int parseRetryAfter(SendResponse response) {
         String description = response.description();
         if (description == null) {

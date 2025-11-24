@@ -11,6 +11,7 @@ public final class OutgoingMessage {
     private final String payload;
     private final String article;
     private final double percent;
+    private final double price;
     private final ProductSnapshot snapshot;
     private final int delaySeconds;
     private final byte[] imageBytes;
@@ -22,7 +23,18 @@ public final class OutgoingMessage {
                            String payload,
                            String article,
                            double percent) {
-        this(channelType, chatId, threadId, secondaryChatId, payload, article, percent, null, 0, null);
+        this(channelType, chatId, threadId, secondaryChatId, payload, article, percent, 0.0, null, 0, null);
+    }
+
+    public OutgoingMessage(ChannelType channelType,
+                           String chatId,
+                           Integer threadId,
+                           String secondaryChatId,
+                           String payload,
+                           String article,
+                           double percent,
+                           double price) {
+        this(channelType, chatId, threadId, secondaryChatId, payload, article, percent, price, null, 0, null);
     }
 
     private OutgoingMessage(ChannelType channelType,
@@ -32,6 +44,7 @@ public final class OutgoingMessage {
                            String payload,
                            String article,
                            double percent,
+                           double price,
                            ProductSnapshot snapshot,
                            int delaySeconds,
                            byte[] imageBytes) {
@@ -42,6 +55,7 @@ public final class OutgoingMessage {
         this.payload = payload;
         this.article = article;
         this.percent = percent;
+        this.price = price;
         this.snapshot = snapshot;
         this.delaySeconds = delaySeconds;
         this.imageBytes = imageBytes;
@@ -75,6 +89,10 @@ public final class OutgoingMessage {
         return percent;
     }
 
+    public double getPrice() {
+        return price;
+    }
+
     public ProductSnapshot getSnapshot() {
         return snapshot;
     }
@@ -96,6 +114,7 @@ public final class OutgoingMessage {
                 this.payload,
                 this.article,
                 this.percent,
+                this.price,
                 snapshot,
                 this.delaySeconds,
                 this.imageBytes
@@ -111,6 +130,7 @@ public final class OutgoingMessage {
                 this.payload,
                 this.article,
                 this.percent,
+                this.price,
                 this.snapshot,
                 delaySeconds,
                 this.imageBytes
@@ -126,6 +146,7 @@ public final class OutgoingMessage {
                 newPayload,
                 this.article,
                 this.percent,
+                this.price,
                 this.snapshot,
                 this.delaySeconds,
                 this.imageBytes
@@ -141,6 +162,7 @@ public final class OutgoingMessage {
                 this.payload,
                 this.article,
                 this.percent,
+                this.price,
                 this.snapshot,
                 this.delaySeconds,
                 imageBytes

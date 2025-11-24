@@ -29,6 +29,7 @@ public final class AppConfig {
     private final String sqlitePath;
     private final int storageQueueCapacity;
     private final int storageBatchSize;
+    private final int telegramQueueCapacity;
     private final String clicksHeader;
     private final Map<String, String> staticCookies;
 
@@ -47,6 +48,7 @@ public final class AppConfig {
         this.sqlitePath = properties.getProperty("sqlite.path", "data/wb-bot.db");
         this.storageQueueCapacity = getInt(properties, "sqlite.queue.capacity", 2_000);
         this.storageBatchSize = getInt(properties, "sqlite.batch.size", 100);
+        this.telegramQueueCapacity = getInt(properties, "telegram.queue.capacity", 50_000);
         this.clicksHeader = properties.getProperty("wb.clicks", "").trim();
         this.staticCookies = parseCookies(properties.getProperty("wb.staticCookies", ""));
     }
@@ -161,6 +163,10 @@ public final class AppConfig {
 
     public int getStorageBatchSize() {
         return storageBatchSize;
+    }
+
+    public int getTelegramQueueCapacity() {
+        return telegramQueueCapacity;
     }
 
     public String getClicksHeader() {

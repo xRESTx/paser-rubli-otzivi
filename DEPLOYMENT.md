@@ -1,99 +1,72 @@
-# Инструкция по развертыванию на сервере
+# Инструкция по развертыванию бота на сервере
 
-## Требования к серверу
+## 1. Сборка JAR файла
 
-### 1. Java
-- **Java 17 или выше** (рекомендуется Java 21+)
-- Проверить версию: `java -version`
+### На локальной машине (Windows):
 
-### 2. SQLite
-- **SQLite НЕ нужно устанавливать отдельно!**
-- Драйвер SQLite уже включен в JAR файл (`sqlite-jdbc`)
-- БД создается автоматически при первом запуске
+```powershell
+# Перейти в директорию проекта
+cd E:\ProjectJava\paser-rubli-otzivi
 
-### 3. Firefox (опционально, для получения cookies)
-- Если Firefox установлен, бот будет использовать его для получения cookies
-- Если Firefox не установлен, бот будет использовать fallback метод
+# Собрать JAR со всеми зависимостями
+.\gradlew.bat jar
 
-## Сборка JAR файла
-
-### Вариант 1: Сборка через Gradle (рекомендуется)
-
-```bash
-# Сборка JAR со всеми зависимостями (fat JAR)
-./gradlew build
-
-# Или на Windows
-gradlew.bat build
+# JAR файл будет в: build\libs\paser-rubli-otzivi.jar
 ```
 
-JAR файл будет создан в: `build/libs/paser-rubli-otzivi.jar`
+### На Linux/Mac:
 
-### Вариант 2: Создание fat JAR вручную
-
-Если нужно создать JAR со всеми зависимостями, добавьте в `build.gradle`:
-
-```gradle
-jar {
-    manifest {
-        attributes 'Main-Class': 'org.example.MyDualBot'
-    }
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-```
-
-Затем:
 ```bash
+cd /path/to/paser-rubli-otzivi
 ./gradlew jar
+# JAR файл будет в: build/libs/paser-rubli-otzivi.jar
 ```
 
-## Подготовка файлов для сервера
+## 2. Файлы для переноса на сервер
 
-### 1. Необходимые файлы:
+Создайте на сервере директорию (например, `/opt/wb-bot` или `~/wb-bot`) и скопируйте:
 
-**Обязательные:**
+### Обязательные файлы:
+
+1. **JAR файл:**
+   - `build/libs/paser-rubli-otzivi.jar` → `paser-rubli-otzivi.jar`
+
+2. **Конфигурация:**
+   - `src/main/resources/app.properties` → `app.properties` (отредактируйте для продакшена!)
+
+3. **Файлы категорий (если используются):**
+   - `Food.txt` → `Food.txt`
+   - `detyam.txt` → `detyam.txt`
+
+4. **Блок-лист продавцов (если есть):**
+   - `pidory.txt` → `pidory.txt`
+
+### Структура на сервере:
+
 ```
-paser-rubli-otzivi.jar          # Собранный JAR файл
-app.properties                   # Конфигурация (из src/main/resources/app.properties)
+/opt/wb-bot/
+├── paser-rubli-otzivi.jar
+├── app.properties
+├── Food.txt
+├── detyam.txt
+├── pidory.txt
+├── start.sh
+└── data/                    # Создастся автоматически
+    └── wb-bot.db           # Создастся автоматически
 ```
 
-**Опциональные (нужны только если используете соответствующие каналы):**
-```
-Food.txt                         # Список URL категорий еды (только если используете канал FOOD)
-detyam.txt                       # Список URL категорий для детей (только если используете канал CHILDREN)
-pidory.txt                       # Блок-лист продавцов (создается автоматически при использовании /pidory)
-```
+## 3. Настройка app.properties на сервере
 
-**Важно:** Если файлов `Food.txt` и `detyam.txt` нет, соответствующие каналы просто не будут использоваться. Это нормально.
-
-### 2. Структура на сервере:
-
-```
-/home/user/wb-bot/
-├── paser-rubli-otzivi.jar      # Обязательно
-├── app.properties               # Обязательно
-├── Food.txt                     # Опционально (только для канала FOOD)
-├── detyam.txt                   # Опционально (только для канала CHILDREN)
-├── pidory.txt                   # Опционально (создается автоматически)
-└── data/                        # Создается автоматически
-    └── wb-bot.db                # SQLite база данных (создается автоматически)
-```
-
-## Настройка app.properties
-
-Скопируйте `src/main/resources/app.properties` на сервер и настройте:
+**ВАЖНО:** Отредактируйте `app.properties` перед запуском:
 
 ```properties
-# Токен Telegram бота
+# Telegram бот
 bot.username=your_bot_username
 bot.token=your_bot_token
 
-# Настройки потоков (можно оставить по умолчанию)
-threads.catalog=256
-threads.product=512
+# Потоки (настройте под ваш сервер)
+threads.catalog=128
+threads.product=1024
 threads.telegram=2
 
 # HTTP настройки
@@ -102,103 +75,208 @@ http.max.retries=3
 http.base.backoff.millis=500
 http.rate.limit.millis=2
 
-# Wildberries настройки
+# Wildberries
 wb.maxPagesPerCategory=100
 wb.catalogRefreshSeconds=60
 wb.clicks=
-wb.staticCookies=your_cookies_here
+# ВАЖНО: Обновите cookies перед запуском!
+wb.staticCookies=_wbauid=...;x_wbaas_token=...
 
-# SQLite (путь относительно директории запуска)
+# SQLite
 sqlite.path=data/wb-bot.db
 sqlite.queue.capacity=2000
 sqlite.batch.size=100
 ```
 
-## Запуск на сервере
+## 4. Установка Java на сервере
 
-### Простой запуск:
-
-```bash
-java -jar paser-rubli-otzivi.jar
-```
-
-### Запуск с настройками памяти:
+Бот требует Java 11 или выше:
 
 ```bash
-java -Xms512m -Xmx2g -jar paser-rubli-otzivi.jar
+# Ubuntu/Debian
+sudo apt update
+sudo apt install openjdk-17-jdk
+
+# Проверка версии
+java -version
 ```
 
-### Запуск в фоне (Linux):
+## 5. Установка Firefox для Selenium (опционально)
+
+Если хотите использовать Selenium для получения cookies:
 
 ```bash
-nohup java -Xms512m -Xmx2g -jar paser-rubli-otzivi.jar > bot.log 2>&1 &
+# Ubuntu/Debian
+sudo apt install firefox
+
+# Проверка
+firefox --version
 ```
 
-### Запуск как systemd service (Linux):
+Если Firefox не установлен, бот будет использовать fallback HTTP метод.
+
+## 6. Создание скрипта запуска
+
+Создайте файл `start.sh`:
+
+```bash
+#!/bin/bash
+
+# Директория с ботом
+BOT_DIR="/opt/wb-bot"
+cd "$BOT_DIR"
+
+# JVM параметры (настройте под ваш сервер)
+JAVA_OPTS="-Xms512m -Xmx2048m -XX:+UseG1GC"
+
+# Запуск
+java $JAVA_OPTS -jar paser-rubli-otzivi.jar
+```
+
+Сделайте скрипт исполняемым:
+
+```bash
+chmod +x start.sh
+```
+
+## 7. Запуск как systemd сервис (рекомендуется)
 
 Создайте файл `/etc/systemd/system/wb-bot.service`:
 
 ```ini
 [Unit]
-Description=Wildberries Bot
+Description=Wildberries Parser Telegram Bot
 After=network.target
 
 [Service]
 Type=simple
 User=your_user
-WorkingDirectory=/home/user/wb-bot
-ExecStart=/usr/bin/java -Xms512m -Xmx2g -jar /home/user/wb-bot/paser-rubli-otzivi.jar
+WorkingDirectory=/opt/wb-bot
+ExecStart=/usr/bin/java -Xms512m -Xmx2048m -XX:+UseG1GC -jar /opt/wb-bot/paser-rubli-otzivi.jar
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Затем:
+Активация сервиса:
+
 ```bash
+# Перезагрузить конфигурацию systemd
 sudo systemctl daemon-reload
+
+# Включить автозапуск
 sudo systemctl enable wb-bot
+
+# Запустить сервис
 sudo systemctl start wb-bot
+
+# Проверить статус
 sudo systemctl status wb-bot
+
+# Просмотр логов
+sudo journalctl -u wb-bot -f
 ```
 
-## Проверка работы
+## 8. Запуск через screen/tmux (альтернатива)
 
-1. Проверьте логи: `tail -f bot.log` или `journalctl -u wb-bot -f`
-2. Отправьте боту команду `/help` в Telegram
-3. Проверьте, что создалась папка `data/` и файл `wb-bot.db`
+Если не хотите использовать systemd:
 
-## Команды бота
+```bash
+# Установка screen
+sudo apt install screen
 
-- `/run` - Запустить сканер
-- `/stop` - Остановить сканер
-- `/status` - Проверить статус сканера
-- `/pidory` - Добавить продавца в блок-лист
-- `/clear` - Проверить товары из БД и обновить акции
-- `/help` - Показать список команд
+# Создание сессии
+screen -S wb-bot
 
-## Важные замечания
+# Запуск бота
+cd /opt/wb-bot
+./start.sh
 
-1. **SQLite не требует установки** - драйвер встроен в JAR, БД создается автоматически
-2. **База данных создается автоматически** при первом запуске в папке `data/`
-3. **Файлы Food.txt и detyam.txt** - опциональны, нужны только если используете каналы FOOD и CHILDREN
-   - Если файлов нет → каналы просто не используются (это нормально)
-4. **pidory.txt** - создается автоматически при добавлении продавцов через `/pidory`
-5. **app.properties** - должен быть в той же директории, что и JAR, или в classpath
+# Отключиться: Ctrl+A, затем D
+# Подключиться обратно: screen -r wb-bot
+```
 
-## Устранение проблем
+## 9. Проверка работы
+
+1. **Проверьте логи:**
+   ```bash
+   # Если через systemd
+   sudo journalctl -u wb-bot -f
+   
+   # Если через screen
+   screen -r wb-bot
+   ```
+
+2. **Отправьте команду боту в Telegram:**
+   - `/status` - проверить статус
+   - `/run` - запустить парсинг
+   - `/help` - список команд
+
+3. **Проверьте базу данных:**
+   ```bash
+   sqlite3 /opt/wb-bot/data/wb-bot.db "SELECT COUNT(*) FROM products;"
+   ```
+
+## 10. Обновление бота
+
+1. Остановите сервис:
+   ```bash
+   sudo systemctl stop wb-bot
+   ```
+
+2. Создайте резервную копию БД:
+   ```bash
+   cp /opt/wb-bot/data/wb-bot.db /opt/wb-bot/data/wb-bot.db.backup
+   ```
+
+3. Замените JAR файл:
+   ```bash
+   cp paser-rubli-otzivi.jar /opt/wb-bot/
+   ```
+
+4. Запустите сервис:
+   ```bash
+   sudo systemctl start wb-bot
+   ```
+
+## 11. Мониторинг
+
+### Проверка использования памяти:
+```bash
+ps aux | grep java
+```
+
+### Проверка размера БД:
+```bash
+du -h /opt/wb-bot/data/wb-bot.db
+```
+
+### Проверка логов на ошибки:
+```bash
+sudo journalctl -u wb-bot --since "1 hour ago" | grep ERROR
+```
+
+## 12. Решение проблем
 
 ### Бот не запускается:
 - Проверьте версию Java: `java -version`
-- Проверьте наличие `app.properties`
-- Проверьте логи на ошибки
+- Проверьте наличие app.properties
+- Проверьте логи: `sudo journalctl -u wb-bot -n 50`
 
-### База данных не создается:
-- Проверьте права на запись в директорию
-- Проверьте путь в `app.properties`: `sqlite.path=data/wb-bot.db`
+### Бот не получает товары:
+- Проверьте cookies в app.properties (могут устареть)
+- Проверьте интернет-соединение
+- Проверьте логи на ошибки HTTP
 
-### Firefox не найден:
-- Это не критично, бот будет использовать fallback метод
-- Или установите Firefox на сервере
+### Высокое использование памяти:
+- Уменьшите `threads.catalog` и `threads.product` в app.properties
+- Увеличьте `-Xmx` в JVM параметрах
 
+### Бот падает:
+- Проверьте логи: `sudo journalctl -u wb-bot -n 100`
+- Убедитесь, что есть место на диске: `df -h`
+- Проверьте права доступа к файлам: `ls -la /opt/wb-bot/`

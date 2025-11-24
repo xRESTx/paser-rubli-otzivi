@@ -52,7 +52,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 config.getSqlitePath(),
                 config.getStorageQueueCapacity(),
                 config.getStorageBatchSize());
-        BlockingQueue<OutgoingMessage> messageQueue = new LinkedBlockingQueue<>(5_000);
+        BlockingQueue<OutgoingMessage> messageQueue = new LinkedBlockingQueue<>(config.getTelegramQueueCapacity());
         
         // Получаем cookies и заголовки один раз при старте через Selenium
         WbHttpClient httpClient;
@@ -90,21 +90,6 @@ public class MyDualBot extends TelegramLongPollingBot {
             }
         }
         
-        this.dispatcher = new TelegramDispatcher(
-                pengradBot, 
-                messageQueue, 
-                storage, 
-                config.getTelegramThreads(),
-                httpClient,
-                sessionCookies,
-                new MessageFormatter()
-        );
-
-        Set<String> food = BotEngine.loadCategoryFile("Food.txt");
-        Set<String> children = BotEngine.loadCategoryFile("detyam.txt");
-        
-        supplierBlacklist.addAll(BotEngine.loadSupplierBlacklist("pidory.txt"));
-
         SentCache sentCache = new SentCache();
         // Предзагружаем кэш данными из БД (за последние 12 часов, чтобы покрыть время жизни кэша 6 часов)
         try {
@@ -119,6 +104,22 @@ public class MyDualBot extends TelegramLongPollingBot {
         } catch (Exception e) {
             log.error("Failed to warmup SentCache from database, continuing without cache preload", e);
         }
+        
+        this.dispatcher = new TelegramDispatcher(
+                pengradBot,
+                messageQueue,
+                storage,
+                config.getTelegramThreads(),
+                httpClient,
+                sessionCookies,
+                new MessageFormatter(),
+                sentCache
+        );
+
+        Set<String> food = BotEngine.loadCategoryFile("Food.txt");
+        Set<String> children = BotEngine.loadCategoryFile("detyam.txt");
+        
+        supplierBlacklist.addAll(BotEngine.loadSupplierBlacklist("pidory.txt"));
 
         RubliService rubliService = new RubliService(
                 new MessageFormatter(),

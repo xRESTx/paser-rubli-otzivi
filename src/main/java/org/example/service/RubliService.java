@@ -34,40 +34,24 @@ public final class RubliService {
         String payload = formatter.format(context.article(), context.name(), price, cashback, percent, context.stock());
 
         List<OutgoingMessage> messages = new ArrayList<>();
+        
+        // Платные каналы - отправляются сразу (без задержки)
+        if ((percent >= 1.5 || (cashback - price >= 199)) && shouldRoute(article, ChannelType.COMMUNITY, percent, price)) {
+            messages.add(new OutgoingMessage(ChannelType.COMMUNITY, "-1002397733938", 8, null, payload, article, percent));
+        }
+        if (percent >= 1 && shouldRoute(article, ChannelType.HUNDRED, percent, price)) {
+            messages.add(new OutgoingMessage(ChannelType.HUNDRED, "-1002340997107", 2, "-1002402655346", payload, article, percent));
+        } else if (percent >= 0.9 && shouldRoute(article, ChannelType.NINETY, percent, price)) {
+            messages.add(new OutgoingMessage(ChannelType.NINETY, "-1002340997107", 4, "-1002446322077", payload, article, percent));
+        } else if (percent >= 0.8 && shouldRoute(article, ChannelType.EIGHTY, percent, price)) {
+            messages.add(new OutgoingMessage(ChannelType.EIGHTY, "-1002340997107", 6, "-1002305962649", payload, article, percent));
+        }
         if (shouldRoute(article, ChannelType.BIG, percent, price)) {
             if ((percent > 0.49 && cashback >= 1000 && cashback < 2500)
                     || (percent > 0.59 && cashback >= 699 && cashback < 1000 && percent < 0.9)
                     || (percent >= 0.4 && cashback >= 2500)) {
                 messages.add(new OutgoingMessage(ChannelType.BIG, "-1002340997107", 13, "-1002290311759", payload, article, percent));
             }
-        }
-        if (percent >= 1 && shouldRoute(article, ChannelType.HUNDRED, percent, price)) {
-            messages.add(new OutgoingMessage(ChannelType.HUNDRED, "-1002340997107", 2, "-1002402655346", payload, article, percent));
-            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
-            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
-                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
-            }
-        } else if (percent >= 0.9 && shouldRoute(article, ChannelType.NINETY, percent, price)) {
-            messages.add(new OutgoingMessage(ChannelType.NINETY, "-1002340997107", 4, "-1002446322077", payload, article, percent));
-            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
-            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
-                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
-            }
-        } else if (percent >= 0.8 && shouldRoute(article, ChannelType.EIGHTY, percent, price)) {
-            messages.add(new OutgoingMessage(ChannelType.EIGHTY, "-1002340997107", 6, "-1002305962649", payload, article, percent));
-            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
-            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
-                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
-            }
-        } else if (percent >= 0.7) {
-            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
-            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
-                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
-            }
-        }
-
-        if ((percent >= 1.5 || (cashback - price >= 199 && percent > 1)) && shouldRoute(article, ChannelType.COMMUNITY, percent, price)) {
-            messages.add(new OutgoingMessage(ChannelType.COMMUNITY, "-1002397733938", 8, null, payload, article, percent));
         }
         if (foodCategories.contains(context.categoryUrl())
                 && percent >= 0.45
@@ -79,6 +63,13 @@ public final class RubliService {
                 && shouldRoute(article, ChannelType.CHILDREN, percent, price)) {
             messages.add(new OutgoingMessage(ChannelType.CHILDREN, "-1002340997107", 255209, "-1002805053383", payload, article, percent));
         }
+        
+        // FREE канал - добавляем без проверки shouldRoute (проверка будет позже при отправке)
+        // Это не блокирует поток парсера
+        if (percent >= 0.65 && shouldRoute(article, ChannelType.FREE, percent, price)) {
+            messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent, price).withDelay(140));
+        }
+        
         return messages;
     }
 

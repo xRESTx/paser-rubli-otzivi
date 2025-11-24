@@ -163,10 +163,16 @@ public final class BotEngine {
                 scheduledPageKeys.clear();
                 scheduledCategoryKeys.clear();
 
-                List<CategoryTask> categories = CategoryTask.load(sessionCookies);
+                List<CategoryTask> categories;
+                try {
+                    categories = CategoryTask.load(sessionCookies);
+                } catch (Exception e) {
+                    log.error("Failed to load categories: {}", e.getMessage());
+                    TimeUnit.SECONDS.sleep(1);
+                    continue;
+                }
                 if (categories.isEmpty()) {
-                    log.warn("CategoryTask returned empty list – check cookies / promo JSON availability");
-                    TimeUnit.SECONDS.sleep(config.getCatalogRefreshSeconds());
+                    TimeUnit.SECONDS.sleep(1);
                     continue;
                 }
 
@@ -188,7 +194,7 @@ public final class BotEngine {
                 latch.await();
                 waitForPagesToDrain();
                 long cycleDuration = System.currentTimeMillis() - cycleStartTime;
-                log.info("Cycle completed: categories={}, pages={}, errors={}, products={}, duration={}ms",
+                log.info("Cycle: categories={}, pages={}, errors={}, products={}, time={}ms",
                         categoriesProcessed.getAndSet(0),
                         pagesProcessed.getAndSet(0),
                         pageErrors.getAndSet(0),
@@ -196,12 +202,14 @@ public final class BotEngine {
                         cycleDuration);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
+                break;
             } catch (Exception e) {
-                log.error("Catalog loop failed", e);
+                log.error("Catalog loop error", e);
                 try {
-                    TimeUnit.SECONDS.sleep(5);
+                    TimeUnit.SECONDS.sleep(1);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
+                    break;
                 }
             }
         }
@@ -215,7 +223,6 @@ public final class BotEngine {
             String url = category.buildPageUrl(1);
             HttpResponse<String> response = httpClient.get(url, category.defaultHeaders());
             if (response.statusCode() != 200) {
-                log.warn("Category {} first page responded with status {}", category.categoryUrl(), response.statusCode());
                 pageErrors.incrementAndGet();
                 return;
             }
@@ -316,7 +323,7 @@ public final class BotEngine {
             if (pageQueue.isEmpty() && activePageWorkers.get() == 0) {
                 return;
             }
-            Thread.sleep(200);
+            Thread.sleep(100);
         }
     }
     
@@ -415,7 +422,12 @@ public final class BotEngine {
     private void enqueueMessages(List<OutgoingMessage> messages) {
         for (OutgoingMessage message : messages) {
             try {
-                outgoingQueue.put(message);
+                // Используем offer() с коротким таймаутом (100ms) - не блокирует парсер надолго
+                // Если очередь полная, ждем максимум 100ms, затем пропускаем (чтобы не блокировать парсер)
+                if (!outgoingQueue.offer(message, 100, TimeUnit.MILLISECONDS)) {
+                    // Очередь переполнена - логируем и пропускаем (парсер продолжает работать)
+                    log.warn("Message queue full, dropping message for article {}", message.getArticle());
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -535,9 +547,6 @@ public final class BotEngine {
             
             // Если процент изменился более чем на 0.15 (15%), отправляем в группу
             if (Math.abs(roundedCurrentPercent - roundedOldPercent) > 0.15) {
-                log.info("Product {} percent changed from {} to {}, sending to channels", 
-                        nmId, roundedOldPercent, roundedCurrentPercent);
-                
                 // Создаем контекст для отправки
                 ProductContext context = new ProductContext(
                         String.valueOf(nmId),
@@ -573,7 +582,6 @@ public final class BotEngine {
             
             return false;
         } catch (Exception e) {
-            log.warn("Failed to check product {}: {}", nmId, e.getMessage());
             return false;
         }
     }
