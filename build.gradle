@@ -11,6 +11,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testImplementation 'org.junit.platform:junit-platform-launcher:1.10.0'
 
     implementation 'com.github.pengrad:java-telegram-bot-api:7.11.0'
     implementation 'org.telegram:telegrambots:6.9.7.1'
@@ -23,10 +24,23 @@ dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
 
     implementation 'com.google.code.gson:gson:2.10.1'
+
+    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+    
+    // Selenium (Firefox) для получения cookies при старте
+    implementation 'org.seleniumhq.selenium:selenium-java:4.15.0'
+    implementation 'org.seleniumhq.selenium:selenium-firefox-driver:4.15.0'
+    implementation 'io.github.bonigarcia:webdrivermanager:5.6.2'
 }
 
 test {
     useJUnitPlatform()
+    // Запускаем тесты в том же процессе, чтобы избежать проблем с worker
+    maxParallelForks = 1
+    forkEvery = 0
+    // Увеличиваем память для тестов
+    minHeapSize = "128m"
+    maxHeapSize = "512m"
 }
 
 task collectCategoryJsons(type: JavaExec) {
@@ -42,5 +56,15 @@ task analyzeCategoryJsons(type: JavaExec) {
 task checkJsonParsing(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'org.example.JsonParserChecker'
+}
+
+// Альтернативный способ запуска тестов, если Gradle Test Executor не работает
+task runTests(type: JavaExec) {
+    group = 'verification'
+    description = 'Run tests directly via TestRunner (workaround for Gradle Test Executor issues)'
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.TestRunner'
+    // Передаём все системные свойства в JVM процесс
+    systemProperties = System.getProperties()
 }
 
