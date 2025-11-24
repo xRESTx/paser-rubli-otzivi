@@ -7,7 +7,8 @@ public enum ChannelType {
     BIG,
     COMMUNITY,
     FOOD,
-    CHILDREN
+    CHILDREN,
+    FREE
 }
 
 

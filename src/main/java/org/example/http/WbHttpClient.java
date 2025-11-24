@@ -94,10 +94,26 @@ public final class WbHttpClient {
                 sleepBackoff(status, attempt);
             } catch (IOException ex) {
                 last = ex;
+                // RST_STREAM и другие HTTP/2 ошибки - это временные проблемы сети
                 if (!shouldRetry(ex, attempt)) {
                     throw ex;
                 }
-                sleepBackoff(0, attempt);
+                // Для HTTP/2 ошибок увеличиваем задержку перед повтором
+                if (isHttp2Error(ex)) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        Thread.currentThread().interrupt();
+                        throw new InterruptedException("Thread interrupted during HTTP/2 error backoff");
+                    }
+                    try {
+                        Thread.sleep(baseBackoffMillis * 2 * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        // Пробрасываем InterruptedException дальше - это нормальное завершение потока
+                        throw ie;
+                    }
+                } else {
+                    sleepBackoff(0, attempt);
+                }
             }
         }
         if (last != null) {
@@ -114,7 +130,15 @@ public final class WbHttpClient {
             long now = System.currentTimeMillis();
             long wait = (lastRequestAt + minIntervalMillis) - now;
             if (wait > 0) {
-                Thread.sleep(wait);
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Thread interrupted before rate limit sleep");
+                }
+                try {
+                    Thread.sleep(wait);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
             }
             lastRequestAt = System.currentTimeMillis();
         }
@@ -135,10 +159,33 @@ public final class WbHttpClient {
     }
 
     private void sleepBackoff(int statusCode, int attempt) throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Thread interrupted before backoff sleep");
+        }
         long multiplier = statusCode == 429 ? 4L : 1L;
         long base = (long) Math.pow(2, attempt - 1) * baseBackoffMillis * multiplier;
         long jitter = ThreadLocalRandom.current().nextLong(100);
-        Thread.sleep(base + jitter);
+        try {
+            Thread.sleep(base + jitter);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+    }
+    
+    private boolean isHttp2Error(IOException ex) {
+        if (ex == null) {
+            return false;
+        }
+        String message = ex.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase();
+            return lower.contains("rst_stream")
+                    || lower.contains("stream not processed")
+                    || lower.contains("goaway")
+                    || lower.contains("too many concurrent streams");
+        }
+        return false;
     }
 }
 

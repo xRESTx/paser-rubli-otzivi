@@ -3,8 +3,9 @@ package org.example.core;
 import com.google.gson.Gson;
 import org.example.config.AppConfig;
 import org.example.http.WbHttpClient;
+import org.example.jsonmodel.DetailProduct;
+import org.example.jsonmodel.DetailResponse;
 import org.example.jsonmodel.Product;
-import org.example.messaging.MessageFormatter;
 import org.example.messaging.OutgoingMessage;
 import org.example.messaging.TelegramDispatcher;
 import org.example.parser.ProductParser;
@@ -157,6 +158,7 @@ public final class BotEngine {
     private void catalogLoop() {
         while (running.get()) {
             try {
+                long cycleStartTime = System.currentTimeMillis();
                 waitForPagesToDrain();
                 scheduledPageKeys.clear();
                 scheduledCategoryKeys.clear();
@@ -167,7 +169,6 @@ public final class BotEngine {
                     TimeUnit.SECONDS.sleep(config.getCatalogRefreshSeconds());
                     continue;
                 }
-                log.info("Loaded {} promo categories", categories.size());
 
                 CountDownLatch latch = new CountDownLatch(categories.size());
                 for (CategoryTask category : categories) {
@@ -186,11 +187,13 @@ public final class BotEngine {
                 }
                 latch.await();
                 waitForPagesToDrain();
-                log.info("Cycle summary: categories={}, pages ok={}, page errors={}, products={}",
+                long cycleDuration = System.currentTimeMillis() - cycleStartTime;
+                log.info("Cycle completed: categories={}, pages={}, errors={}, products={}, duration={}ms",
                         categoriesProcessed.getAndSet(0),
                         pagesProcessed.getAndSet(0),
                         pageErrors.getAndSet(0),
-                        productsMatched.getAndSet(0));
+                        productsMatched.getAndSet(0),
+                        cycleDuration);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
@@ -229,12 +232,14 @@ public final class BotEngine {
                     }
                 }
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            // Нормальное завершение потока при остановке - не логируем
         } catch (Exception e) {
             if (isBenignHttpException(e)) {
                 log.trace("Benign HTTP issue on first page {}: {}", category.categoryUrl(), e.getMessage());
             } else {
                 pageErrors.incrementAndGet();
-                log.debug("Failed to fetch first page for {}", category.categoryUrl(), e);
             }
         }
     }
@@ -254,7 +259,6 @@ public final class BotEngine {
                     String url = task.category().buildPageUrl(task.page());
                     HttpResponse<String> response = httpClient.get(url, task.category().defaultHeaders());
                     if (response.statusCode() != 200) {
-                        log.debug("Page {} for category {} responded with status {}", task.page(), task.category().categoryUrl(), response.statusCode());
                         pageErrors.incrementAndGet();
                         continue;
                     }
@@ -266,6 +270,8 @@ public final class BotEngine {
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                // Нормальное завершение потока при остановке - выходим из цикла
+                break;
             } catch (Exception e) {
                 if (isBenignHttpException(e)) {
                     log.trace("Benign HTTP issue on product page: {}", e.getMessage());
@@ -281,13 +287,21 @@ public final class BotEngine {
         if (throwable == null) {
             return false;
         }
+        // HttpTimeoutException - это не критичная ошибка, просто таймаут запроса
+        if (throwable instanceof java.net.http.HttpTimeoutException) {
+            return true;
+        }
         String message = throwable.getMessage();
         if (message != null) {
             String lower = message.toLowerCase();
             if (lower.contains("too many concurrent streams")
                     || lower.contains("goaway")
                     || lower.contains("http_429")
-                    || lower.contains("status code 429")) {
+                    || lower.contains("status code 429")
+                    || lower.contains("rst_stream")
+                    || lower.contains("stream not processed")
+                    || lower.contains("connection reset")
+                    || lower.contains("request timed out")) {
                 return true;
             }
         }
@@ -312,7 +326,6 @@ public final class BotEngine {
 
     private void processProducts(CategoryTask categoryTask, List<Product> products) {
         if (products == null || products.isEmpty()) {
-            log.debug("Category {} returned empty products list", categoryTask.categoryUrl());
             return;
         }
         long now = Instant.now().toEpochMilli();
@@ -465,6 +478,104 @@ public final class BotEngine {
         } catch (IOException ignored) {
         }
         return result;
+    }
+    
+    /**
+     * Проверяет товар по детальной карточке и обновляет БД.
+     * @return true если товар был обновлен или удален, false если без изменений
+     */
+    public boolean checkAndUpdateProduct(long nmId, double oldPercent) {
+        try {
+            String url = String.format(
+                    "https://www.wildberries.ru/__internal/u-card/cards/v4/detail?appType=1&curr=rub&dest=-1255987&spp=30&hide_dtype=11&ab_testid=popular_sort&lang=ru&nm=%d",
+                    nmId
+            );
+            Map<String, String> headers = new java.util.HashMap<>();
+            if (sessionCookies != null && !sessionCookies.isEmpty()) {
+                StringBuilder cookieHeader = new StringBuilder();
+                for (Map.Entry<String, String> entry : sessionCookies.entrySet()) {
+                    if (cookieHeader.length() > 0) {
+                        cookieHeader.append("; ");
+                    }
+                    cookieHeader.append(entry.getKey()).append("=").append(entry.getValue());
+                }
+                headers.put("Cookie", cookieHeader.toString());
+            }
+            
+            HttpResponse<String> response = httpClient.get(url, headers);
+            if (response.statusCode() != 200) {
+                return false;
+            }
+            
+            Gson gson = new Gson();
+            DetailResponse detailResponse = gson.fromJson(response.body(), DetailResponse.class);
+            if (detailResponse == null || detailResponse.products == null || detailResponse.products.isEmpty()) {
+                storage.deleteProduct(nmId);
+                return true;
+            }
+            
+            DetailProduct product = detailResponse.products.get(0);
+            if (product.sizes == null || product.sizes.isEmpty() || product.sizes.get(0).price == null) {
+                storage.deleteProduct(nmId);
+                return true;
+            }
+            
+            DetailProduct.DetailPrice price = product.sizes.get(0).price;
+            long currentPrice = price.product != null ? price.product / 100 : 0;
+            long currentFeedback = product.feedbackPoints != null ? Long.parseLong(product.feedbackPoints) : 0;
+            
+            if (currentPrice <= 0 || currentFeedback <= 0) {
+                storage.deleteProduct(nmId);
+                return true;
+            }
+            
+            double currentPercent = (double) currentFeedback / currentPrice;
+            double roundedCurrentPercent = Math.round(currentPercent * 10000.0) / 10000.0;
+            double roundedOldPercent = Math.round(oldPercent * 10000.0) / 10000.0;
+            
+            // Если процент изменился более чем на 0.15 (15%), отправляем в группу
+            if (Math.abs(roundedCurrentPercent - roundedOldPercent) > 0.15) {
+                log.info("Product {} percent changed from {} to {}, sending to channels", 
+                        nmId, roundedOldPercent, roundedCurrentPercent);
+                
+                // Создаем контекст для отправки
+                ProductContext context = new ProductContext(
+                        String.valueOf(nmId),
+                        product.name != null ? product.name : "Unknown",
+                        "", // categoryUrl неизвестен
+                        currentPrice,
+                        currentFeedback,
+                        "0", // stock неизвестен
+                        roundedCurrentPercent
+                );
+                
+                List<OutgoingMessage> messages = rubliService.evaluate(context);
+                if (!messages.isEmpty()) {
+                    long now = Instant.now().toEpochMilli();
+                    int channelMask = buildMask(messages);
+                    ProductSnapshot snapshot = new ProductSnapshot(
+                            nmId,
+                            product.name != null ? product.name : "Unknown",
+                            0, // supplierId неизвестен
+                            null, // supplierName неизвестен
+                            "", // categoryUrl неизвестен
+                            now,
+                            currentPrice,
+                            currentFeedback,
+                            0, // stock неизвестен
+                            roundedCurrentPercent,
+                            channelMask
+                    );
+                    enqueueMessages(attachSnapshot(messages, snapshot));
+                    return true;
+                }
+            }
+            
+            return false;
+        } catch (Exception e) {
+            log.warn("Failed to check product {}: {}", nmId, e.getMessage());
+            return false;
+        }
     }
 }
 

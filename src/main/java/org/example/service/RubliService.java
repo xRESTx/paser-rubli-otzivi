@@ -43,10 +43,27 @@ public final class RubliService {
         }
         if (percent >= 1 && shouldRoute(article, ChannelType.HUNDRED, percent, price)) {
             messages.add(new OutgoingMessage(ChannelType.HUNDRED, "-1002340997107", 2, "-1002402655346", payload, article, percent));
+            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
+            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
+                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
+            }
         } else if (percent >= 0.9 && shouldRoute(article, ChannelType.NINETY, percent, price)) {
             messages.add(new OutgoingMessage(ChannelType.NINETY, "-1002340997107", 4, "-1002446322077", payload, article, percent));
+            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
+            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
+                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
+            }
         } else if (percent >= 0.8 && shouldRoute(article, ChannelType.EIGHTY, percent, price)) {
             messages.add(new OutgoingMessage(ChannelType.EIGHTY, "-1002340997107", 6, "-1002305962649", payload, article, percent));
+            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
+            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
+                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
+            }
+        } else if (percent >= 0.7) {
+            // Проверяем через SentCache для FREE канала, чтобы избежать дубликатов
+            if (shouldRoute(article, ChannelType.FREE, percent, price)) {
+                messages.add(new OutgoingMessage(ChannelType.FREE, "-1002346226214", null, null, payload, article, percent).withDelay(140));
+            }
         }
 
         if ((percent >= 1.5 || (cashback - price >= 199 && percent > 1)) && shouldRoute(article, ChannelType.COMMUNITY, percent, price)) {

@@ -7,7 +7,6 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 public final class InsertSentRecordCommand implements StorageCommand {
-
     private static final String SQL = """
             INSERT OR IGNORE INTO sent_posts(nm_id, channel, chat_id, sent_at, percent)
             VALUES(?, ?, ?, ?, ?)
@@ -26,7 +25,9 @@ public final class InsertSentRecordCommand implements StorageCommand {
             statement.setString(2, record.channelType().name());
             statement.setString(3, record.chatId());
             statement.setLong(4, record.sentAt());
-            statement.setDouble(5, record.percent());
+            // Округляем percent до 4 знаков после запятой для избежания проблем с точностью
+            double roundedPercent = Math.round(record.percent() * 10000.0) / 10000.0;
+            statement.setDouble(5, roundedPercent);
             statement.executeUpdate();
         }
     }

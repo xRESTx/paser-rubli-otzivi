@@ -23,6 +23,7 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -52,21 +53,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 config.getStorageQueueCapacity(),
                 config.getStorageBatchSize());
         BlockingQueue<OutgoingMessage> messageQueue = new LinkedBlockingQueue<>(5_000);
-        this.dispatcher = new TelegramDispatcher(pengradBot, messageQueue, storage, config.getTelegramThreads());
-
-        Set<String> food = BotEngine.loadCategoryFile("Food.txt");
-        Set<String> children = BotEngine.loadCategoryFile("detyam.txt");
-        supplierBlacklist.addAll(BotEngine.loadSupplierBlacklist("pidory.txt"));
-
-        RubliService rubliService = new RubliService(
-                new MessageFormatter(),
-                new SentCache(),
-                Collections.unmodifiableSet(food),
-                Collections.unmodifiableSet(children)
-        );
         
-        CategoryTask.setClicksHeader(config.getClicksHeader());
-
         // Получаем cookies и заголовки один раз при старте через Selenium
         WbHttpClient httpClient;
         Map<String, String> sessionCookies = new java.util.HashMap<>(config.getStaticCookies());
@@ -102,6 +89,46 @@ public class MyDualBot extends TelegramLongPollingBot {
                 );
             }
         }
+        
+        this.dispatcher = new TelegramDispatcher(
+                pengradBot, 
+                messageQueue, 
+                storage, 
+                config.getTelegramThreads(),
+                httpClient,
+                sessionCookies,
+                new MessageFormatter()
+        );
+
+        Set<String> food = BotEngine.loadCategoryFile("Food.txt");
+        Set<String> children = BotEngine.loadCategoryFile("detyam.txt");
+        
+        supplierBlacklist.addAll(BotEngine.loadSupplierBlacklist("pidory.txt"));
+
+        SentCache sentCache = new SentCache();
+        // Предзагружаем кэш данными из БД (за последние 12 часов, чтобы покрыть время жизни кэша 6 часов)
+        try {
+            log.info("Loading recent sent records from database for cache warmup...");
+            List<SqliteStorage.CacheWarmupRecord> warmupRecords = storage.loadRecentSentRecordsForCache(12);
+            log.info("Found {} records in database, preparing for cache warmup", warmupRecords.size());
+            List<SentCache.WarmupRecord> cacheRecords = warmupRecords.stream()
+                    .map(r -> new SentCache.WarmupRecord(r.article(), r.channelType(), r.percent(), r.lastPrice()))
+                    .toList();
+            sentCache.warmup(cacheRecords);
+            log.info("Cache warmup completed");
+        } catch (Exception e) {
+            log.error("Failed to warmup SentCache from database, continuing without cache preload", e);
+        }
+
+        RubliService rubliService = new RubliService(
+                new MessageFormatter(),
+                sentCache,
+                Collections.unmodifiableSet(food),
+                Collections.unmodifiableSet(children)
+        );
+        
+        CategoryTask.setClicksHeader(config.getClicksHeader());
+
         this.engine = new BotEngine(
                 config,
                 httpClient,
@@ -112,7 +139,7 @@ public class MyDualBot extends TelegramLongPollingBot {
                 supplierBlacklist,
                 sessionCookies
         );
-        this.admins = Set.of("1027094894", "1039378955", "5392268853");
+        this.admins = Set.of("1027094894", "1039378955");
     }
 
     @Override
@@ -139,6 +166,7 @@ public class MyDualBot extends TelegramLongPollingBot {
         }
 
         if (!admins.contains(String.valueOf(chatId))) {
+            // Игнорируем сообщения от не-администраторов
             return;
         }
 
@@ -151,7 +179,21 @@ public class MyDualBot extends TelegramLongPollingBot {
                 waitingForBlacklist.add(chatId);
                 sendPengradMessage(String.valueOf(chatId), "Пришли имя продавца или ссылку https://www.wildberries.ru/seller/ID");
             }
-            default -> sendPengradMessage(String.valueOf(chatId), "Команда не распознана.");
+            case "/help" -> {
+                String helpText = """
+                        Доступные команды:
+                        
+                        /run - Запустить сканер
+                        /stop - Остановить сканер
+                        /status - Проверить статус сканера
+                        /pidory - Добавить продавца в блок-лист
+                        /clear - Проверить товары из БД и обновить акции
+                        /help - Показать это сообщение
+                        """;
+                sendPengradMessage(String.valueOf(chatId), helpText);
+            }
+            case "/clear" -> clearDatabase(chatId);
+            default -> sendPengradMessage(String.valueOf(chatId), "Команда не распознана. Используйте /help для списка команд.");
         }
     }
 
@@ -189,6 +231,96 @@ public class MyDualBot extends TelegramLongPollingBot {
         engine.stop();
         sendPengradMessage(String.valueOf(chatId), "Всё остановлено.");
     }
+    
+    private void clearDatabase(long chatId) {
+        boolean wasRunning = running.get();
+        
+        if (wasRunning) {
+            // Если бот запущен - останавливаем, очищаем, запускаем заново
+            sendPengradMessage(String.valueOf(chatId), "Бот запущен. Останавливаю для очистки...");
+            engine.stop();
+            running.set(false);
+            
+            // Ждем немного, чтобы все потоки завершились
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        } else {
+            sendPengradMessage(String.valueOf(chatId), "Начинаю проверку товаров из БД...");
+        }
+        
+        new Thread(() -> {
+            try {
+                List<SqliteStorage.ProductRecord> products = storage.getAllProducts();
+                if (products.isEmpty()) {
+                    sendPengradMessage(String.valueOf(chatId), "В БД нет товаров для проверки.");
+                    if (wasRunning) {
+                        // Запускаем бот заново
+                        running.set(true);
+                        engine.start();
+                        sendPengradMessage(String.valueOf(chatId), "Бот перезапущен.");
+                    }
+                    return;
+                }
+                
+                sendPengradMessage(String.valueOf(chatId), 
+                        String.format("Найдено %d товаров. Начинаю проверку...", products.size()));
+                
+                int checked = 0;
+                int updated = 0;
+                int deleted = 0;
+                
+                for (SqliteStorage.ProductRecord product : products) {
+                    checked++;
+                    boolean changed = engine.checkAndUpdateProduct(product.nmId(), product.lastPercent());
+                    if (changed) {
+                        // Проверяем, был ли товар удален (если его больше нет в БД)
+                        List<SqliteStorage.ProductRecord> remaining = storage.getAllProducts();
+                        boolean stillExists = remaining.stream().anyMatch(p -> p.nmId() == product.nmId());
+                        if (stillExists) {
+                            updated++;
+                        } else {
+                            deleted++;
+                        }
+                    }
+                    
+                    // Небольшая задержка между запросами
+                    Thread.sleep(100);
+                }
+                
+                String resultMessage = String.format(
+                        "Проверка завершена!\n\nПроверено товаров: %d из %d\nОбновлено: %d\nУдалено: %d", 
+                        checked, products.size(), updated, deleted);
+                
+                if (wasRunning) {
+                    // Запускаем бот заново
+                    sendPengradMessage(String.valueOf(chatId), resultMessage + "\n\nЗапускаю бот заново...");
+                    running.set(true);
+                    engine.start();
+                    sendPengradMessage(String.valueOf(chatId), "Бот перезапущен.");
+                } else {
+                    sendPengradMessage(String.valueOf(chatId), resultMessage);
+                }
+            } catch (Exception e) {
+                log.error("Failed to clear database", e);
+                sendPengradMessage(String.valueOf(chatId), "Ошибка при проверке товаров: " + e.getMessage());
+                if (wasRunning) {
+                    // Пытаемся запустить бот даже при ошибке
+                    try {
+                        running.set(true);
+                        engine.start();
+                        sendPengradMessage(String.valueOf(chatId), "Бот перезапущен после ошибки.");
+                    } catch (Exception restartError) {
+                        log.error("Failed to restart bot after clear error", restartError);
+                        sendPengradMessage(String.valueOf(chatId), "Не удалось перезапустить бот. Используйте /run вручную.");
+                    }
+                }
+            }
+        }, "clear-db-worker").start();
+    }
+    
 
     private void sendPengradMessage(String chatId, String messageText) {
         pengradBot.execute(new SendMessage(chatId, messageText));

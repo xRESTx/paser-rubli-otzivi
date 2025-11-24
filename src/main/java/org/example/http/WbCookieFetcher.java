@@ -141,22 +141,38 @@ public final class WbCookieFetcher {
     private static String resolveFirefoxBinary() {
         // 1. System property
         String sysProp = System.getProperty("firefox.binary");
-        if (sysProp != null && Files.exists(Path.of(sysProp))) {
-            return sysProp;
+        if (sysProp != null && !sysProp.isBlank()) {
+            Path path = Path.of(sysProp);
+            if (Files.exists(path)) {
+                log.debug("Found Firefox via system property: {}", path);
+                return path.toString();
+            } else {
+                log.warn("Firefox path from system property does not exist: {}", sysProp);
+            }
         }
         // 2. Environment variable
         String env = System.getenv("FIREFOX_BIN");
-        if (env != null && Files.exists(Path.of(env))) {
-            return env;
+        if (env != null && !env.isBlank()) {
+            Path path = Path.of(env);
+            if (Files.exists(path)) {
+                log.debug("Found Firefox via environment variable: {}", path);
+                return path.toString();
+            } else {
+                log.warn("Firefox path from environment variable does not exist: {}", env);
+            }
         }
-        // 3. Common install paths
+        // 3. Common install paths (prioritize standard Program Files location)
         String[] defaultPaths = {
-                "C:\\\\Program Files\\\\Mozilla Firefox\\\\firefox.exe",
-                "C:\\\\Program Files (x86)\\\\Mozilla Firefox\\\\firefox.exe"
+                "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+                "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"
         };
-        for (String path : defaultPaths) {
-            if (Files.exists(Path.of(path))) {
-                return path;
+        for (String pathStr : defaultPaths) {
+            Path path = Path.of(pathStr);
+            if (Files.exists(path)) {
+                log.debug("Found Firefox at standard location: {}", path);
+                return path.toString();
+            } else {
+                log.trace("Firefox not found at: {}", pathStr);
             }
         }
         // 4. Cached selenium downloads (e.g., user-provided path)
@@ -171,6 +187,7 @@ public final class WbCookieFetcher {
                 if (latest != null) {
                     Path candidate = latest.resolve("firefox.exe");
                     if (Files.exists(candidate)) {
+                        log.debug("Found Firefox in Selenium cache: {}", candidate);
                         return candidate.toString();
                     }
                 }
@@ -178,6 +195,7 @@ public final class WbCookieFetcher {
                 log.warn("Failed to inspect Firefox cache directory", e);
             }
         }
+        log.warn("Firefox binary not found in any standard location");
         return null;
     }
     

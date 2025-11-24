@@ -12,6 +12,8 @@ public final class OutgoingMessage {
     private final String article;
     private final double percent;
     private final ProductSnapshot snapshot;
+    private final int delaySeconds;
+    private final byte[] imageBytes;
 
     public OutgoingMessage(ChannelType channelType,
                            String chatId,
@@ -20,7 +22,7 @@ public final class OutgoingMessage {
                            String payload,
                            String article,
                            double percent) {
-        this(channelType, chatId, threadId, secondaryChatId, payload, article, percent, null);
+        this(channelType, chatId, threadId, secondaryChatId, payload, article, percent, null, 0, null);
     }
 
     private OutgoingMessage(ChannelType channelType,
@@ -30,7 +32,9 @@ public final class OutgoingMessage {
                            String payload,
                            String article,
                            double percent,
-                           ProductSnapshot snapshot) {
+                           ProductSnapshot snapshot,
+                           int delaySeconds,
+                           byte[] imageBytes) {
         this.channelType = channelType;
         this.chatId = chatId;
         this.threadId = threadId;
@@ -39,6 +43,8 @@ public final class OutgoingMessage {
         this.article = article;
         this.percent = percent;
         this.snapshot = snapshot;
+        this.delaySeconds = delaySeconds;
+        this.imageBytes = imageBytes;
     }
 
     public ChannelType getChannelType() {
@@ -73,6 +79,14 @@ public final class OutgoingMessage {
         return snapshot;
     }
 
+    public int getDelaySeconds() {
+        return delaySeconds;
+    }
+
+    public byte[] getImageBytes() {
+        return imageBytes;
+    }
+
     public OutgoingMessage withSnapshot(ProductSnapshot snapshot) {
         return new OutgoingMessage(
                 this.channelType,
@@ -82,7 +96,54 @@ public final class OutgoingMessage {
                 this.payload,
                 this.article,
                 this.percent,
-                snapshot
+                snapshot,
+                this.delaySeconds,
+                this.imageBytes
+        );
+    }
+
+    public OutgoingMessage withDelay(int delaySeconds) {
+        return new OutgoingMessage(
+                this.channelType,
+                this.chatId,
+                this.threadId,
+                this.secondaryChatId,
+                this.payload,
+                this.article,
+                this.percent,
+                this.snapshot,
+                delaySeconds,
+                this.imageBytes
+        );
+    }
+    
+    public OutgoingMessage withUpdatedPayload(String newPayload) {
+        return new OutgoingMessage(
+                this.channelType,
+                this.chatId,
+                this.threadId,
+                this.secondaryChatId,
+                newPayload,
+                this.article,
+                this.percent,
+                this.snapshot,
+                this.delaySeconds,
+                this.imageBytes
+        );
+    }
+    
+    public OutgoingMessage withImageBytes(byte[] imageBytes) {
+        return new OutgoingMessage(
+                this.channelType,
+                this.chatId,
+                this.threadId,
+                this.secondaryChatId,
+                this.payload,
+                this.article,
+                this.percent,
+                this.snapshot,
+                this.delaySeconds,
+                imageBytes
         );
     }
 }

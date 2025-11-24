@@ -1,5 +1,6 @@
 package org.example.storage;
 
+import org.example.service.ChannelType;
 import org.example.storage.commands.InsertSentRecordCommand;
 import org.example.storage.commands.PersistSnapshotCommand;
 import org.example.storage.commands.StorageCommand;
@@ -41,12 +42,15 @@ public final class SqliteStorage implements AutoCloseable {
 
     public void start() {
         if (!running.compareAndSet(false, true)) {
+            log.warn("Storage already running, ignoring start()");
             return;
         }
+        log.info("Starting SqliteStorage, database path: {}", jdbcUrl);
         ensureDirectory();
         this.worker = new Thread(this::runLoop, "sqlite-writer");
         this.worker.setDaemon(true);
         this.worker.start();
+        log.info("SqliteStorage worker thread started");
     }
 
     public void stop() {
@@ -73,21 +77,143 @@ public final class SqliteStorage implements AutoCloseable {
     public void enqueueSentRecord(SentRecord record) {
         enqueue(new InsertSentRecordCommand(record));
     }
+    
+    /**
+     * Загружает последние отправленные записи из БД для предзагрузки кэша.
+     * Загружает записи за последние указанные часы вместе с последней ценой из таблицы products.
+     * Возвращает список записей с информацией: article, channelType, percent, lastPrice.
+     */
+    public List<CacheWarmupRecord> loadRecentSentRecordsForCache(int hoursBack) {
+        String jdbcUrl = this.jdbcUrl;
+        List<CacheWarmupRecord> records = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+            // Убеждаемся, что таблицы созданы
+            configure(connection);
+            long cutoffTime = System.currentTimeMillis() - (hoursBack * 3600_000L);
+            // Загружаем отправленные записи вместе с последней ценой из products
+            // Без DISTINCT, чтобы загрузить все записи для каждого канала и percent
+            String sql = """
+                    SELECT sp.nm_id, sp.channel, sp.percent, COALESCE(p.last_price, 0) as last_price
+                    FROM sent_posts sp
+                    LEFT JOIN products p ON sp.nm_id = p.nm_id
+                    WHERE sp.sent_at >= ?
+                    ORDER BY sp.sent_at DESC
+                    """;
+            try (var statement = connection.prepareStatement(sql)) {
+                statement.setLong(1, cutoffTime);
+                try (var rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        String article = String.valueOf(rs.getLong("nm_id"));
+                        ChannelType channelType = ChannelType.valueOf(rs.getString("channel"));
+                        // Округляем percent до 4 знаков для совпадения с сохраненным значением
+                        double percent = Math.round(rs.getDouble("percent") * 10000.0) / 10000.0;
+                        long lastPrice = rs.getLong("last_price");
+                        records.add(new CacheWarmupRecord(article, channelType, percent, lastPrice));
+                    }
+                }
+            }
+            log.info("Loaded {} recent sent records from database for cache warmup (last {} hours)", records.size(), hoursBack);
+        } catch (SQLException e) {
+            log.warn("Failed to load recent sent records from database", e);
+        }
+        return records;
+    }
+    
+    /**
+     * Запись для предзагрузки кэша: содержит article, channelType, percent и lastPrice.
+     */
+    public record CacheWarmupRecord(String article, ChannelType channelType, double percent, long lastPrice) {
+    }
+    
+    /**
+     * Запись о товаре из БД для команды clear.
+     */
+    public record ProductRecord(long nmId, String name, long lastPrice, long lastFeedback, double lastPercent) {
+    }
+    
+    /**
+     * Получает все товары из БД для проверки акций.
+     */
+    public List<ProductRecord> getAllProducts() {
+        List<ProductRecord> products = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+            String sql = """
+                    SELECT nm_id, name, last_price, last_feedback, 
+                           CAST(last_feedback AS REAL) / CAST(last_price AS REAL) as last_percent
+                    FROM products
+                    ORDER BY last_seen_at DESC
+                    """;
+            try (var statement = connection.prepareStatement(sql);
+                 var rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    long nmId = rs.getLong("nm_id");
+                    String name = rs.getString("name");
+                    long lastPrice = rs.getLong("last_price");
+                    long lastFeedback = rs.getLong("last_feedback");
+                    double lastPercent = rs.getDouble("last_percent");
+                    products.add(new ProductRecord(nmId, name, lastPrice, lastFeedback, lastPercent));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to load products from database", e);
+        }
+        return products;
+    }
+    
+    /**
+     * Удаляет товар из БД (включая связанные записи).
+     */
+    public void deleteProduct(long nmId) {
+        try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+            connection.setAutoCommit(false);
+            try {
+                // Удаляем из sent_posts
+                try (var stmt = connection.prepareStatement("DELETE FROM sent_posts WHERE nm_id = ?")) {
+                    stmt.setLong(1, nmId);
+                    stmt.executeUpdate();
+                }
+                // Удаляем из price_history
+                try (var stmt = connection.prepareStatement("DELETE FROM price_history WHERE nm_id = ?")) {
+                    stmt.setLong(1, nmId);
+                    stmt.executeUpdate();
+                }
+                // Удаляем из products
+                try (var stmt = connection.prepareStatement("DELETE FROM products WHERE nm_id = ?")) {
+                    stmt.setLong(1, nmId);
+                    stmt.executeUpdate();
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            log.error("Failed to delete product {} from database", nmId, e);
+        }
+    }
 
     private void enqueue(StorageCommand command) {
         if (!running.get()) {
+            log.warn("Storage not running, dropping command: {}", command.getClass().getSimpleName());
             return;
         }
         try {
-            queue.offer(command, 2, TimeUnit.SECONDS);
+            boolean offered = queue.offer(command, 2, TimeUnit.SECONDS);
+            if (!offered) {
+                log.warn("Failed to enqueue storage command, queue full: {}", command.getClass().getSimpleName());
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
     private void runLoop() {
+        log.info("SqliteStorage runLoop started");
         try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
             configure(connection);
+            log.info("SqliteStorage database connection established and tables configured");
             List<StorageCommand> batch = new ArrayList<>(batchSize);
             while (running.get() || !queue.isEmpty()) {
                 try {
@@ -95,7 +221,11 @@ public final class SqliteStorage implements AutoCloseable {
                     if (cmd != null) {
                         batch.add(cmd);
                     }
-                    if (batch.size() >= batchSize || (!running.get() && !batch.isEmpty())) {
+                    // Для sent_posts записываем сразу (batchSize=1), для остального - по batchSize
+                    boolean shouldFlush = batch.size() >= batchSize 
+                            || (!running.get() && !batch.isEmpty())
+                            || (batch.size() > 0 && batch.stream().anyMatch(c -> c instanceof InsertSentRecordCommand));
+                    if (shouldFlush) {
                         flush(connection, batch);
                     }
                 } catch (InterruptedException e) {
@@ -123,13 +253,18 @@ public final class SqliteStorage implements AutoCloseable {
         }
     }
 
-    private void flush(Connection connection, List<StorageCommand> batch) throws InterruptedException {
+    private int flush(Connection connection, List<StorageCommand> batch) throws InterruptedException {
+        if (batch.isEmpty()) {
+            return 0;
+        }
+        int count = batch.size();
         try {
             connection.setAutoCommit(false);
             for (StorageCommand command : batch) {
                 command.execute(connection);
             }
             connection.commit();
+            return count;
         } catch (SQLException e) {
             log.error("Failed to flush {} storage commands", batch.size(), e);
             try {
@@ -137,6 +272,7 @@ public final class SqliteStorage implements AutoCloseable {
             } catch (SQLException ex) {
                 log.error("Rollback failed", ex);
             }
+            return 0;
         } finally {
             batch.clear();
             try {
