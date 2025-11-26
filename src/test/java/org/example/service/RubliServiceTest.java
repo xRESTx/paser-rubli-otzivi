@@ -45,7 +45,6 @@ class RubliServiceTest {
         Set<ChannelType> channelTypes = messages.stream()
                 .map(OutgoingMessage::getChannelType)
                 .collect(Collectors.toSet());
-
         assertTrue(channelTypes.contains(ChannelType.BIG), "Should route to BIG");
         assertTrue(channelTypes.contains(ChannelType.HUNDRED), "Should route to 100%");
         assertTrue(channelTypes.contains(ChannelType.FOOD), "Should route to FOOD");

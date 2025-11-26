@@ -2,6 +2,8 @@ package org.example.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,6 +31,23 @@ class SentCacheTest {
 
         assertTrue(first);
         assertTrue(second, "Должны переслать товар при изменении цены >=15%");
+    }
+
+    @Test
+    void warmupPreventsImmediateDuplicates() {
+        SentCache cache = new SentCache();
+        cache.warmup(List.of(new SentCache.WarmupRecord(
+                "111",
+                ChannelType.HUNDRED,
+                1.2,
+                500
+        )));
+
+        boolean shouldSendSame = cache.shouldSend("111", ChannelType.HUNDRED, 1.2, 0.15, 500, 0.15);
+        assertFalse(shouldSendSame, "Warmup data must block duplicate sends");
+
+        boolean shouldSendPriceDrop = cache.shouldSend("111", ChannelType.HUNDRED, 1.2, 0.15, 400, 0.15);
+        assertTrue(shouldSendPriceDrop, "Price drop should bypass warmup record");
     }
 }
 

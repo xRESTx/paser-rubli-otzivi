@@ -13,7 +13,7 @@ import java.util.Map;
 
 public final class CategoryTask {
 
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 YaBrowser/25.8.0.0 Safari/537.36";
+    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0";
     private static volatile String clicksHeader;
 
     private final String categoryUrl;
@@ -49,18 +49,16 @@ public final class CategoryTask {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", USER_AGENT);
         headers.put("Accept", "*/*");
-        headers.put("Accept-Language", "ru,en;q=0.9");
-        headers.put("Accept-Encoding", "identity");
+        headers.put("Accept-Language", "en-US,en;q=0.5");
+        headers.put("Accept-Encoding", "gzip, deflate");
         headers.put("Referer", categoryUrl);
         headers.put("Origin", "https://www.wildberries.ru");
         // Connection header is restricted by Java HttpClient, skip it
         headers.put("Sec-Fetch-Dest", "empty");
         headers.put("Sec-Fetch-Mode", "cors");
         headers.put("Sec-Fetch-Site", "same-origin");
-        headers.put("Sec-CH-UA", "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"YaBrowser\";v=\"25.8\", \"Yowser\";v=\"2.5\"");
-        headers.put("Sec-CH-UA-Mobile", "?0");
-        headers.put("Sec-CH-UA-Platform", "\"Windows\"");
-        headers.put("Priority", "u=1, i");
+        // Firefox не использует Sec-CH-UA заголовки (это Chrome-специфичные)
+        headers.put("Priority", "u=4");
         if (clicksHeader != null && !clicksHeader.isBlank()) {
             headers.put("clicks", clicksHeader);
         }
@@ -68,6 +66,7 @@ public final class CategoryTask {
         headers.put("x-spa-version", "13.14.1");
         headers.put("x-userid", "0");
         headers.put("deviceid", "site_2bc3dd7d2f1a4eb28539e17ff17c894a");
+        // TE: trailers - Java HttpClient автоматически добавляет это для HTTP/2
         return headers;
     }
 

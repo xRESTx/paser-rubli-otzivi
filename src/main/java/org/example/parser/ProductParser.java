@@ -29,27 +29,38 @@ public final class ProductParser {
             return CatalogPage.empty();
         }
         Data data = parseAsData(json);
-        if (data == null || data.products == null || data.products.isEmpty()) {
+        if (data == null) {
+            org.slf4j.LoggerFactory.getLogger(ProductParser.class).warn("Failed to parse catalog JSON: data is null");
+            return CatalogPage.empty();
+        }
+        if (data.products == null || data.products.isEmpty()) {
+            org.slf4j.LoggerFactory.getLogger(ProductParser.class).debug("Catalog JSON parsed but products list is null or empty (total={})", data.total);
             return CatalogPage.empty();
         }
         int totalProducts = data.total > 0 ? data.total : data.products.size();
+        org.slf4j.LoggerFactory.getLogger(ProductParser.class).debug("Parsed catalog: {} products, total={}", data.products.size(), totalProducts);
         return new CatalogPage(data.products, totalProducts);
     }
 
     private Data parseAsData(String json) {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ProductParser.class);
         try {
             Data direct = gson.fromJson(json, Data.class);
             if (direct != null && direct.products != null && !direct.products.isEmpty()) {
+                log.debug("Parsed as direct Data: {} products", direct.products.size());
                 return direct;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.trace("Failed to parse as direct Data: {}", e.getMessage());
         }
         try {
             Root wrapped = gson.fromJson(json, Root.class);
             if (wrapped != null && wrapped.data != null && wrapped.data.products != null) {
+                log.debug("Parsed as Root wrapper: {} products", wrapped.data.products.size());
                 return wrapped.data;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.trace("Failed to parse as Root wrapper: {}", e.getMessage());
         }
         try {
             JsonObject object = gson.fromJson(json, JsonObject.class);
@@ -61,12 +72,17 @@ public final class ProductParser {
                 if (object.has("total") && !object.get("total").isJsonNull()) {
                     data.total = object.get("total").getAsInt();
                 } else {
-                    data.total = products.size();
+                    data.total = products != null ? products.size() : 0;
                 }
+                log.debug("Parsed as JsonObject: {} products, total={}", products != null ? products.size() : 0, data.total);
                 return data;
+            } else {
+                log.warn("JSON object does not have 'products' field. Available keys: {}", object != null ? object.keySet() : "null");
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("Failed to parse as JsonObject: {}", e.getMessage());
         }
+        log.warn("All parsing attempts failed for catalog JSON (length: {})", json != null ? json.length() : 0);
         return null;
     }
 

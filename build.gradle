@@ -44,13 +44,12 @@ dependencies {
     implementation 'org.json:json:20231013'
     implementation 'org.jsoup:jsoup:1.15.4'
 
-    implementation 'org.slf4j:slf4j-simple:2.0.12'
+    implementation 'org.slf4j:slf4j-api:2.0.12'
+    implementation 'ch.qos.logback:logback-classic:1.4.14'
 
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
 
     implementation 'com.google.code.gson:gson:2.10.1'
-
-    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
     
     // Selenium (Firefox) для получения cookies при старте
     implementation 'org.seleniumhq.selenium:selenium-java:4.15.0'

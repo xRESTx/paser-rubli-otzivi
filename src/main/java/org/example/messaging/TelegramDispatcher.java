@@ -10,8 +10,6 @@ import org.example.http.WbHttpClient;
 import org.example.jsonmodel.DetailProduct;
 import org.example.jsonmodel.DetailResponse;
 import org.example.service.SentCache;
-import org.example.storage.SqliteStorage;
-import org.example.storage.records.SentRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,11 +19,13 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.http.HttpResponse;
-import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -37,52 +37,50 @@ public final class TelegramDispatcher {
     private static final Logger log = LoggerFactory.getLogger(TelegramDispatcher.class);
 
     private final TelegramBot telegramBot;
-    private final BlockingQueue<OutgoingMessage> queue;
-    private final SqliteStorage storage;
-    private final int workerCount;
+    private final BlockingQueue<OutgoingMessage> paidQueue;
+    private final BlockingQueue<OutgoingMessage> freeQueue;
     private final WbHttpClient httpClient;
     private final Map<String, String> sessionCookies;
     private final MessageFormatter messageFormatter;
     private final SentCache sentCache;
-    private ExecutorService executor;
-    private ExecutorService delayedSenderExecutor;
-    private final ConcurrentLinkedQueue<DelayedMessage> delayedQueue = new ConcurrentLinkedQueue<>();
-    private Thread delayedCheckerThread;
+    private Thread paidWorker;
+    private Thread freeWorker;
+    private ScheduledExecutorService scheduler;
+    private final Map<String, ProductInfo> mapOnSent = new ConcurrentHashMap<>();
     private volatile boolean running;
+    
+    private static class ProductInfo {
+        private final OutgoingMessage message;
+        private final long time;
+        
+        ProductInfo(OutgoingMessage message, long time) {
+            this.message = message;
+            this.time = time;
+        }
+        
+        OutgoingMessage getMessage() {
+            return message;
+        }
+        
+        long getTime() {
+            return time;
+        }
+    }
 
     public TelegramDispatcher(TelegramBot telegramBot,
-                              BlockingQueue<OutgoingMessage> queue,
-                              SqliteStorage storage,
-                              int workerCount,
+                              BlockingQueue<OutgoingMessage> paidQueue,
+                              BlockingQueue<OutgoingMessage> freeQueue,
                               WbHttpClient httpClient,
                               Map<String, String> sessionCookies,
                               MessageFormatter messageFormatter,
                               SentCache sentCache) {
         this.telegramBot = telegramBot;
-        this.queue = queue;
-        this.storage = storage;
-        this.workerCount = workerCount;
+        this.paidQueue = paidQueue;
+        this.freeQueue = freeQueue;
         this.httpClient = httpClient;
         this.sessionCookies = sessionCookies;
         this.messageFormatter = messageFormatter;
         this.sentCache = sentCache;
-    }
-    
-    private static class DelayedMessage {
-        final OutgoingMessage message;
-        final long createdAtMillis;
-        final int delaySeconds;
-        
-        DelayedMessage(OutgoingMessage message, int delaySeconds) {
-            this.message = message;
-            this.createdAtMillis = System.currentTimeMillis();
-            this.delaySeconds = delaySeconds;
-        }
-        
-        boolean isReady() {
-            long elapsed = (System.currentTimeMillis() - createdAtMillis) / 1000;
-            return elapsed >= delaySeconds;
-        }
     }
 
     public void start() {
@@ -90,125 +88,147 @@ public final class TelegramDispatcher {
             return;
         }
         running = true;
-        executor = Executors.newFixedThreadPool(workerCount, r -> {
-            Thread t = new Thread(r, "tg-dispatcher");
+        scheduler = Executors.newScheduledThreadPool(1, r -> {
+            Thread t = new Thread(r, "tg-free-scheduler");
             t.setDaemon(true);
             return t;
         });
-        // Отдельный executor для отправки отложенных сообщений
-        delayedSenderExecutor = Executors.newFixedThreadPool(5, r -> {
-            Thread t = new Thread(r, "tg-delayed-sender");
-            t.setDaemon(true);
-            return t;
-        });
-        // Поток для проверки отложенных сообщений каждые 10 секунд
-        delayedCheckerThread = new Thread(this::delayedMessageChecker, "tg-delayed-checker");
-        delayedCheckerThread.setDaemon(true);
-        delayedCheckerThread.start();
-        for (int i = 0; i < workerCount; i++) {
-            executor.submit(this::runLoop);
-        }
-    }
-
-    public BlockingQueue<OutgoingMessage> getQueue() {
-        return queue;
+        
+        // Планировщик для отправки в FREE канал с задержкой 2 мин 20 сек
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                long now = System.currentTimeMillis();
+                mapOnSent.entrySet().removeIf(e -> {
+                    long age = now - e.getValue().getTime();
+                    if (age > TimeUnit.MINUTES.toMillis(2) + 20_000) { // 2 мин 20 сек (140 секунд)
+                        String article = e.getKey();
+                        ProductInfo productInfo = e.getValue();
+                        // Проверяем, не был ли товар уже отправлен в free chat
+                        // Порог изменения процента = 0.1 (10%), как в старой логике
+                        // ВАЖНО: для FREE канала проверяем БЕЗ сохранения в файл (saveToFile=false)
+                        // Сохранение произойдет только после фактической отправки
+                        if (sentCache.shouldSend(article, productInfo.getMessage().getChannelType(), 
+                                productInfo.getMessage().getPercent(), 0.1, 
+                                productInfo.getMessage().getPrice(), 0.15, false)) {
+                            try {
+                                processFreeMessage(productInfo.getMessage());
+                                // Товар успешно отправлен - удаляем из mapOnSent
+                                // Сохранение в кэш произошло в sendImmediate() после успешной отправки
+                            } catch (InterruptedException ex) {
+                                Thread.currentThread().interrupt();
+                                // Не удаляем из mapOnSent при прерывании - попробуем снова позже
+                                return false;
+                            } catch (Exception ex) {
+                                log.error("Failed to send delayed FREE message for article {}: {}", article, ex.getMessage(), ex);
+                                // Не удаляем из mapOnSent при ошибке - попробуем снова позже
+                                // Товар НЕ был сохранен в кэш, так как отправка не удалась
+                                return false;
+                            }
+                        } else {
+                            log.debug("FREE channel: article={} blocked by cache (already sent)", article);
+                        }
+                        // Удаляем из mapOnSent только если товар был отправлен или заблокирован кэшем
+                        return true;
+                    }
+                    return false;
+                });
+            } catch (Throwable t) {
+                log.warn("Error in FREE scheduler", t);
+            }
+        }, 0, 10, TimeUnit.SECONDS);
+        
+        paidWorker = new Thread(this::runPaidLoop, "tg-paid-dispatcher");
+        paidWorker.setDaemon(true);
+        paidWorker.start();
+        freeWorker = new Thread(this::runFreeLoop, "tg-free-dispatcher");
+        freeWorker.setDaemon(true);
+        freeWorker.start();
     }
 
     public void stop() {
         running = false;
-        if (delayedCheckerThread != null) {
-            delayedCheckerThread.interrupt();
-        }
-        if (delayedSenderExecutor != null) {
-            delayedSenderExecutor.shutdown();
+        if (scheduler != null) {
+            scheduler.shutdown();
             try {
-                delayedSenderExecutor.awaitTermination(10, TimeUnit.SECONDS);
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
             } catch (InterruptedException e) {
+                scheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }
-        if (executor != null) {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(10, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        if (paidWorker != null) {
+            paidWorker.interrupt();
+        }
+        if (freeWorker != null) {
+            freeWorker.interrupt();
         }
     }
 
-    private void runLoop() {
-        while (running || !queue.isEmpty()) {
+    private void runPaidLoop() {
+        while (running || (paidQueue != null && !paidQueue.isEmpty())) {
             try {
-                OutgoingMessage message = queue.poll(500, TimeUnit.MILLISECONDS);
+                OutgoingMessage message = paidQueue.poll(500, TimeUnit.MILLISECONDS);
                 if (message == null) {
                     continue;
                 }
-                // Если есть задержка, добавляем в очередь отложенных сообщений
-                if (message.getDelaySeconds() > 0) {
-                    delayedQueue.offer(new DelayedMessage(message, message.getDelaySeconds()));
-                } else {
-                    send(message);
-                }
+                send(message);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                log.error("Failed to dispatch telegram message", e);
+                log.error("Failed to dispatch paid telegram message", e);
             }
         }
     }
-    
-    private void delayedMessageChecker() {
-        while (running) {
+
+    private void runFreeLoop() {
+        while (running || (freeQueue != null && !freeQueue.isEmpty()) || !mapOnSent.isEmpty()) {
             try {
-                Thread.sleep(10_000); // Проверка каждые 10 секунд
-                
-                // Проверяем все отложенные сообщения
-                var iterator = delayedQueue.iterator();
-                while (iterator.hasNext()) {
-                    DelayedMessage delayed = iterator.next();
-                    if (delayed.isReady()) {
-                        iterator.remove();
-                        // Для FREE канала: проверка shouldRoute и отправка полностью асинхронны, не блокируют поток
-                        if (delayed.message.getChannelType() == org.example.service.ChannelType.FREE) {
-                            final OutgoingMessage originalMessage = delayed.message;
-                            delayedSenderExecutor.submit(() -> {
-                                try {
-                                    // Проверяем shouldRoute здесь, а не в потоке парсера
-                                    if (!shouldRoute(originalMessage)) {
-                                        return;
-                                    }
-                                    OutgoingMessage verifiedMessage = verifyAndUpdateMessage(originalMessage);
-                                    if (verifiedMessage == null) {
-                                        return;
-                                    }
-                                    sendImmediate(verifiedMessage);
-                                } catch (Exception e) {
-                                    // Не логируем таймауты HTTP - это нормальная ситуация
-                                    if (!isTimeoutException(e)) {
-                                        log.warn("FREE channel send failed for {}: {}", originalMessage.getArticle(), e.getMessage());
-                                    }
-                                }
-                            });
-                        } else {
-                            // Для остальных каналов - просто отправляем
-                            final OutgoingMessage finalMessage = delayed.message;
-                            delayedSenderExecutor.submit(() -> {
-                                try {
-                                    sendImmediate(finalMessage);
-                                } catch (Exception e) {
-                                    log.error("Failed to send delayed message", e);
-                                }
-                            });
-                        }
+                OutgoingMessage message = freeQueue.poll(500, TimeUnit.MILLISECONDS);
+                if (message != null) {
+                    // КРИТИЧНО: Используем putIfAbsent для атомарной проверки и добавления
+                    // Это предотвращает race condition, когда два потока одновременно проверяют и добавляют товар
+                    String article = message.getArticle();
+                    ProductInfo existing = mapOnSent.putIfAbsent(article, new ProductInfo(message, System.currentTimeMillis()));
+                    if (existing == null) {
+                        // Товар успешно добавлен (его не было в mapOnSent)
+                        log.debug("FREE channel: article={}, percent={} added to mapOnSent for delayed sending (2m 20s)", 
+                                article, message.getPercent());
+                    } else {
+                        // Товар уже был в mapOnSent - это дубликат, пропускаем
+                        log.debug("FREE channel: article {} already in mapOnSent (percent={}), skipping duplicate (new percent={})", 
+                                article, existing.getMessage().getPercent(), message.getPercent());
                     }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                log.error("Error in delayed message checker", e);
+                log.error("Failed to dispatch free telegram message", e);
+            }
+        }
+    }
+
+    private void processFreeMessage(OutgoingMessage message) throws InterruptedException {
+        if (message == null) {
+            return;
+        }
+        try {
+            // Проверка shouldSend уже выполнена в планировщике перед вызовом этого метода
+            OutgoingMessage verifiedMessage = verifyAndUpdateMessage(message);
+            if (verifiedMessage == null) {
+                log.debug("FREE channel: article {} verification failed (product unavailable or no longer on sale)", message.getArticle());
+                return;
+            }
+            log.debug("FREE channel: sending article={} after delay", message.getArticle());
+            sendImmediate(verifiedMessage);
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            if (!isTimeoutException(e)) {
+                log.warn("FREE channel send failed for {}: {}", message.getArticle(), e.getMessage());
             }
         }
     }
@@ -381,66 +401,93 @@ public final class TelegramDispatcher {
     
     private void sendImmediate(OutgoingMessage message) throws InterruptedException {
         boolean sent = false;
-        while (!sent) {
-            SendResponse response;
-            
-            // Фото отправляется только для FREE канала (фото скачивается только для FREE)
-            // Если есть фото и это FREE канал, отправляем фото, иначе текст
-            if (message.getImageBytes() != null && message.getImageBytes().length > 0 
-                    && message.getChannelType() == org.example.service.ChannelType.FREE) {
-                SendPhoto sendPhoto = new SendPhoto(message.getChatId(), message.getImageBytes());
-                sendPhoto.fileName("photo.jpg");
-                sendPhoto.caption(message.getPayload());
-                sendPhoto.parseMode(ParseMode.HTML);
-                if (message.getThreadId() != null) {
-                    sendPhoto.messageThreadId(message.getThreadId());
-                }
-                response = telegramBot.execute(sendPhoto);
-            } else {
-                SendMessage main = new SendMessage(message.getChatId(), message.getPayload())
-                        .parseMode(ParseMode.HTML);
-                if (message.getThreadId() != null) {
-                    main.messageThreadId(message.getThreadId());
-                }
-                response = telegramBot.execute(main);
-            }
-            
-            if (response.isOk()) {
-                sent = true;
-                if (message.getSnapshot() != null) {
-                    storage.enqueueSnapshot(message.getSnapshot());
-                }
-                SentRecord sentRecord = new SentRecord(
-                        message.getArticle(),
-                        message.getChannelType(),
-                        message.getChatId(),
-                        Instant.now().toEpochMilli(),
-                        message.getPercent()
-                );
-                storage.enqueueSentRecord(sentRecord);
-                if (message.getSecondaryChatId() != null) {
-                    // Фото отправляется только для FREE канала
-                    if (message.getImageBytes() != null && message.getImageBytes().length > 0 
-                            && message.getChannelType() == org.example.service.ChannelType.FREE) {
-                        SendPhoto secondPhoto = new SendPhoto(message.getSecondaryChatId(), message.getImageBytes());
-                        secondPhoto.fileName("photo.jpg");
-                        secondPhoto.caption(message.getPayload());
-                        secondPhoto.parseMode(ParseMode.HTML);
-                        telegramBot.execute(secondPhoto);
-                    } else {
-                        SendMessage second = new SendMessage(message.getSecondaryChatId(), message.getPayload())
-                                .parseMode(ParseMode.HTML);
-                        telegramBot.execute(second);
+        int retryCount = 0;
+        final int maxRetries = 3;
+        
+        while (!sent && retryCount < maxRetries) {
+            try {
+                SendResponse response;
+                
+                // Фото отправляется только для FREE канала (фото скачивается только для FREE)
+                // Если есть фото и это FREE канал, отправляем фото, иначе текст
+                if (message.getImageBytes() != null && message.getImageBytes().length > 0 
+                        && message.getChannelType() == org.example.service.ChannelType.FREE) {
+                    SendPhoto sendPhoto = new SendPhoto(message.getChatId(), message.getImageBytes());
+                    sendPhoto.fileName("photo.jpg");
+                    sendPhoto.caption(message.getPayload());
+                    sendPhoto.parseMode(ParseMode.HTML);
+                    if (message.getThreadId() != null) {
+                        sendPhoto.messageThreadId(message.getThreadId());
                     }
+                    response = telegramBot.execute(sendPhoto);
+                } else {
+                    SendMessage main = new SendMessage(message.getChatId(), message.getPayload())
+                            .parseMode(ParseMode.HTML);
+                    if (message.getThreadId() != null) {
+                        main.messageThreadId(message.getThreadId());
+                    }
+                    response = telegramBot.execute(main);
                 }
-            } else {
-                int retryAfter = parseRetryAfter(response);
-                if (retryAfter <= 0) {
-                    log.warn("Telegram send failed without retryAfter: {}", response.description());
-                    return;
+                
+                if (response.isOk()) {
+                    sent = true;
+
+                    // Для FREE канала сохраняем в файл только после фактической отправки
+                    if (message.getChannelType() == org.example.service.ChannelType.FREE) {
+                        sentCache.shouldSend(message.getArticle(), message.getChannelType(), 
+                                message.getPercent(), 0.1, message.getPrice(), 0.15, true);
+                    }
+                    // Для других каналов сохранение происходит автоматически в SentCache.shouldSend()
+                    if (message.getSecondaryChatId() != null) {
+                        // Фото отправляется только для FREE канала
+                        if (message.getImageBytes() != null && message.getImageBytes().length > 0 
+                                && message.getChannelType() == org.example.service.ChannelType.FREE) {
+                            SendPhoto secondPhoto = new SendPhoto(message.getSecondaryChatId(), message.getImageBytes());
+                            secondPhoto.fileName("photo.jpg");
+                            secondPhoto.caption(message.getPayload());
+                            secondPhoto.parseMode(ParseMode.HTML);
+                            telegramBot.execute(secondPhoto);
+                        } else {
+                            SendMessage second = new SendMessage(message.getSecondaryChatId(), message.getPayload())
+                                    .parseMode(ParseMode.HTML);
+                            telegramBot.execute(second);
+                        }
+                    }
+                } else {
+                    int retryAfter = parseRetryAfter(response);
+                    if (retryAfter <= 0) {
+                        log.warn("Telegram send failed without retryAfter: {}", response.description());
+                        throw new RuntimeException("Telegram send failed: " + response.description());
+                    }
+                    retryCount++;
+                    log.debug("Telegram send failed, retrying after {} seconds (attempt {}/{})", retryAfter, retryCount, maxRetries);
+                    TimeUnit.SECONDS.sleep(retryAfter);
                 }
-                TimeUnit.SECONDS.sleep(retryAfter);
+            } catch (Exception e) {
+                retryCount++;
+                if (retryCount >= maxRetries) {
+                    log.error("Telegram send failed after {} attempts for article {}: {}", 
+                            maxRetries, message.getArticle(), e.getMessage());
+                    throw new RuntimeException("Failed to send message after " + maxRetries + " attempts", e);
+                }
+                // Для сетевых ошибок делаем задержку перед повтором
+                if (e.getCause() instanceof java.net.ConnectException || 
+                    e.getMessage() != null && (e.getMessage().contains("Failed to connect") || 
+                                              e.getMessage().contains("Connection timed out"))) {
+                    int backoffSeconds = Math.min(retryCount * 5, 30); // Экспоненциальная задержка до 30 сек
+                    log.warn("Network error sending article {}, retrying in {} seconds (attempt {}/{}): {}", 
+                            message.getArticle(), backoffSeconds, retryCount, maxRetries, e.getMessage());
+                    TimeUnit.SECONDS.sleep(backoffSeconds);
+                } else {
+                    // Для других ошибок пробуем сразу
+                    log.warn("Error sending article {}, retrying immediately (attempt {}/{}): {}", 
+                            message.getArticle(), retryCount, maxRetries, e.getMessage());
+                }
             }
+        }
+        
+        if (!sent) {
+            throw new RuntimeException("Failed to send message after " + maxRetries + " attempts");
         }
     }
 
