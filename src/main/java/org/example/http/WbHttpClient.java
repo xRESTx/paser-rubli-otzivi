@@ -1,4 +1,4 @@
-package org.example.example.http;
+package org.example.http;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

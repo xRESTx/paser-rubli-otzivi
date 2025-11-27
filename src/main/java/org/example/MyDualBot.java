@@ -1,4 +1,4 @@
-package org.example.example;
+package org.example;
 
 import com.google.gson.*;
 import com.google.gson.JsonElement;
@@ -15,7 +15,6 @@ import com.pengrad.telegrambot.request.SendMessage;
 import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.response.SendResponse;
 
-import org.example.ProductInfo;
 import org.example.jsonmodel.Data;
 import org.example.jsonmodel.Product;
 import org.example.jsonmodel.Root;
@@ -44,8 +43,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.io.BufferedWriter;
 import java.io.IOException;

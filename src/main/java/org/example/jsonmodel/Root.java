@@ -1,4 +1,4 @@
-package org.example.example.jsonmodel;
+package org.example.jsonmodel;
 
 public class Root {
     public Data data;

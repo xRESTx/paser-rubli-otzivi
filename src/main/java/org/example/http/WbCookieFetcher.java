@@ -1,4 +1,4 @@
-package org.example.example.http;
+package org.example.http;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

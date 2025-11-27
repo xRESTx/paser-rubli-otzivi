@@ -1,4 +1,4 @@
-package org.example.example;
+package org.example;
 
 public class ProductInfo{
     private Long time;
