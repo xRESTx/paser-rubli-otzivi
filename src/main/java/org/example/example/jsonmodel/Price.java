@@ -1,4 +1,4 @@
-package org.example.jsonmodel;
+package org.example.example.jsonmodel;
 
 public class Price {
     public int product;
