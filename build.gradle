@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 java {
@@ -9,6 +10,16 @@ java {
 
 tasks.withType(JavaCompile) {
     options.release = 17
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    archiveBaseName = 'paser-rubli-otzivi'
+    archiveClassifier = ''
+    manifest {
+        attributes 'Main-Class': 'org.example.MyDualBot'
+    }
+    mergeServiceFiles()
 }
 
 jar {
@@ -34,28 +45,19 @@ repositories {
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
     testImplementation 'org.junit.platform:junit-platform-launcher:1.10.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-console:1.10.0'
 
     implementation 'com.github.pengrad:java-telegram-bot-api:7.11.0'
     implementation 'org.telegram:telegrambots:6.9.7.1'
 
-    implementation 'org.json:json:20231013'
     implementation 'org.jsoup:jsoup:1.15.4'
-
-    implementation 'org.slf4j:slf4j-api:2.0.12'
-    implementation 'ch.qos.logback:logback-classic:1.4.14'
-
+    // Use logback (SLF4J backend) so we can write logs to parser.log via logback.xml
+    implementation 'ch.qos.logback:logback-classic:1.5.12'
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
-
     implementation 'com.google.code.gson:gson:2.10.1'
-    
-    // Selenium (Firefox) для получения cookies при старте
-    implementation 'org.seleniumhq.selenium:selenium-java:4.15.0'
-    implementation 'org.seleniumhq.selenium:selenium-firefox-driver:4.15.0'
-    implementation 'io.github.bonigarcia:webdrivermanager:5.6.2'
 }
+
 
 test {
     useJUnitPlatform()
@@ -65,6 +67,9 @@ test {
     // Увеличиваем память для тестов
     minHeapSize = "128m"
     maxHeapSize = "512m"
+    // Запускаем тесты в том же процессе (in-process)
+    systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+    systemProperty 'wb.live.tests', System.getProperty('wb.live.tests', 'false')
 }
 
 task collectCategoryJsons(type: JavaExec) {
@@ -82,13 +87,23 @@ task checkJsonParsing(type: JavaExec) {
     mainClass = 'org.example.JsonParserChecker'
 }
 
-// Альтернативный способ запуска тестов, если Gradle Test Executor не работает
-task runTests(type: JavaExec) {
+// Запуск теста ProductParsingIntegrationTest напрямую через JUnit Platform
+task runBot(type: JavaExec) {
+    group = 'application'
+    description = 'Run Telegram Wildberries parser bot'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.example.MyDualBot'
+}
+
+task runProductParsingTest(type: JavaExec) {
     group = 'verification'
-    description = 'Run tests directly via TestRunner (workaround for Gradle Test Executor issues)'
+    description = 'Run ProductParsingIntegrationTest directly'
     classpath = sourceSets.test.runtimeClasspath + sourceSets.main.runtimeClasspath
-    mainClass = 'org.example.TestRunner'
-    // Передаём все системные свойства в JVM процесс
+    mainClass = 'org.junit.platform.console.ConsoleLauncher'
+    args = [
+        '--select-class', 'org.example.ProductParsingIntegrationTest',
+        '--details', 'verbose'
+    ]
     systemProperties = System.getProperties()
 }
 
